@@ -1,3 +1,4 @@
+from locale import normalize
 import pprint
 import tempfile
 from pathlib import Path
@@ -15,9 +16,7 @@ from skimage.morphology.selem import disk
 import cv2
 import time
 import matplotlib.pyplot as plt  # pylint: disable=import-outside-toplevel
-
 import spfa
-
 
 # Room, walls, and objects
 GLOBAL_SCALING = 0.1
@@ -62,21 +61,28 @@ LOCAL_MAP_WIDTH = 1  # 1 meter
 LOCAL_MAP_PIXELS_PER_METER = LOCAL_MAP_PIXEL_WIDTH / LOCAL_MAP_WIDTH
 MAP_UPDATE_STEPS = 60
 
+# Pointwise source SPFA
+def spfa_pointwise(input_map, source_point):
+    source = np.full(input_map.shape, False)
+    source[source_point[0], source_point[1]] = True
+    return spfa.spfa_dense_source(input_map, source)
+
 class Environment:
     def __init__(
         # pylint: disable=bad-continuation
         # This comment is here to make code folding work
             self, room_length=1.0, room_width=0.5, num_cubes=10, obstacle_config='small_empty',
-            use_visit_frequency_channel=True, use_shortest_path_channel=False, shortest_path_channel_scale=0.25,
+            use_visit_frequency_channel=True, use_ivfm=False, use_shortest_path_channel=False, shortest_path_channel_scale=0.25,
+            use_boundary_gradient_channel=False,
             use_position_channel=False, position_channel_scale=0.25, partial_rewards_scale=2.0, 
-            use_shortest_path_partial_rewards=False, exploration_reward = 1, collision_penalty=1, nonmovement_penalty=1,
+            use_shortest_path_partial_rewards=False, exploration_reward=1, collision_penalty=1, nonmovement_penalty=1,
             use_shortest_path_movement=False, fixed_step_size=None, use_steering_commands=False, steering_commands_num_turns=4,
             ministep_size=0.25, inactivity_cutoff=100, random_seed=None,
-            use_gui=False, show_debug_annotations=False, show_occupancy_map=True, use_opt_rule=0,
+            use_gui=False, show_debug_annotations=False, show_occupancy_map=False, show_state_representation=True, use_opt_rule=0,
         ):
         ################################################################################
         # Store arguments
-
+       
         # Room config
         self.room_length = room_length
         self.room_width = room_width
@@ -86,10 +92,12 @@ class Environment:
         # State representation
         self.use_shortest_path_channel = use_shortest_path_channel
         self.use_visit_frequency_channel = use_visit_frequency_channel
+        self.use_ivfm = use_ivfm # Overrides use_visit_frequency_channel
         self.shortest_path_channel_scale = shortest_path_channel_scale
         self.use_position_channel = use_position_channel
         self.use_opt_rule = use_opt_rule
         self.position_channel_scale = position_channel_scale
+        self.use_boundary_gradient_channel = use_boundary_gradient_channel
 
         # Rewards
         self.exploration_reward = exploration_reward
@@ -110,7 +118,7 @@ class Environment:
         self.random_seed = random_seed
         self.use_gui = use_gui
         self.show_debug_annotations = show_debug_annotations
-        self.show_state_representation = False
+        self.show_state_representation = show_state_representation
         self.show_occupancy_map = show_occupancy_map
 
         pprint.PrettyPrinter(indent=4).pprint(self.__dict__)
@@ -799,18 +807,29 @@ class Environment:
 
         self.sr_plt.clf()
         self.sr_plt.ion()
+
         ax1 = self.sr_plt.subplot(141)
-        self.sr_plt.imshow(state[:,:,0], cmap='gray')
+        colors = self.sr_plt.imshow(state[:,:,0], cmap='plasma')
+        self.sr_plt.gcf().colorbar(colors, ax=ax1)
         ax1.axis('off')
+
         ax2 = self.sr_plt.subplot(142)
-        self.sr_plt.imshow(state[:,:,1], cmap='gray')
+        colors = self.sr_plt.imshow(state[:,:,1], cmap='plasma')
+        self.sr_plt.gcf().colorbar(colors, ax=ax2)
         ax2.axis('off')
-        ax3 = self.sr_plt.subplot(143)
-        self.sr_plt.imshow(state[:,:,2])
-        ax3.axis('off')
-        ax4 = self.sr_plt.subplot(144)
-        self.sr_plt.imshow(state[:,:,3])
-        ax4.axis('off')
+
+        # TODO Bad fix: IVFM config has only 2 channels 
+        if not self.use_ivfm:
+            ax3 = self.sr_plt.subplot(143)
+            colors = self.sr_plt.imshow(state[:,:,2])
+            self.sr_plt.gcf().colorbar(colors, ax=ax3)
+            ax3.axis('off')
+
+            ax4 = self.sr_plt.subplot(144)
+            colors = self.sr_plt.imshow(state[:,:,3])
+            self.sr_plt.gcf().colorbar(colors, ax=ax4)
+            ax4.axis('off')
+
         self.sr_plt.pause(0.001)
 
     def _update_occupancy_map_visualization(self, robot_waypoint_positions=None, robot_target_end_effector_position=None):
@@ -854,11 +873,19 @@ class Environment:
     def _create_global_shortest_path_map(self, robot_position):
         pixel_i, pixel_j = position_to_pixel_indices(robot_position[0], robot_position[1], self.configuration_space.shape)
         pixel_i, pixel_j = self._closest_valid_cspace_indices(pixel_i, pixel_j)
-        global_map, _ = spfa.spfa(self.configuration_space, (pixel_i, pixel_j))
+        global_map, _ = spfa_pointwise(self.configuration_space, (pixel_i, pixel_j))
         global_map /= LOCAL_MAP_PIXELS_PER_METER
         global_map /= (np.sqrt(2) * LOCAL_MAP_PIXEL_WIDTH) / LOCAL_MAP_PIXELS_PER_METER
         global_map *= self.shortest_path_channel_scale
         return global_map
+
+    def _create_global_boundary_gradient_map(self):
+        global_map, _ = spfa.spfa_dense_source(self.configuration_space, self.global_visit_freq_map == 0)
+        global_map /= LOCAL_MAP_PIXELS_PER_METER
+        global_map /= (np.sqrt(2) * LOCAL_MAP_PIXEL_WIDTH) / LOCAL_MAP_PIXELS_PER_METER
+        global_map += 1 - self.configuration_space
+        global_map *= self.shortest_path_channel_scale
+        return global_map 
 
     def _get_new_observation(self):
         # Capture images from forward-facing camera
@@ -997,28 +1024,60 @@ class Environment:
         local_map -= local_map.min()  # Move the min to 0 to make invariant to size of environment
         return local_map
 
+    def _get_local_boundary_gradient_map(self, global_map, robot_position, robot_heading):
+        local_boundary_gradient_map = self._get_local_map(global_map, robot_position, robot_heading)
+        local_boundary_gradient_map -= local_boundary_gradient_map.min()  # Move the min to 0 to make invariant to size of environment
+        return local_boundary_gradient_map
+
     def get_state(self, done=False):
         if done:
             return None
 
-        # Overhead map
         channels = []
-        channels.append(self._get_local_overhead_map())
 
-        # Robot state
-        channels.append(self.robot_state_channel)
-        
-        # Visit frequency map
-        if self.use_visit_frequency_channel:
-            channels.append(self._get_local_visit_frequency_map(self.global_visit_freq_map, self.robot_position, self.robot_heading))
-        
+        # Merged channels
+        if self.use_ivfm:
+            # Untraversible space 
+            untraversible_space = 1 - self._get_local_map(self.configuration_space, self.robot_position, self.robot_heading)
+
+            # Robot collision mask
+            robot_state = self.robot_state_channel
+
+            # VFM sigmoid asymptote at 10
+            vfm = self._get_local_visit_frequency_map(self.global_visit_freq_map, self.robot_position, self.robot_heading)
+            vfm_capped = 20 / (1 + np.exp(-0.2 * vfm)) - 10
+            vfm_capped[untraversible_space > 0] = 0
+            vfm_capped[robot_state > 0] = 0
+
+            # IVFM with 10 reserved for obstacles
+            channels.append(10 * np.minimum(robot_state + untraversible_space, 1) + vfm_capped)
+
+        # Separate channels
+        else:   
+            # Overhead map
+            channels.append(self._get_local_overhead_map())
+
+            # Robot state
+            channels.append(self.robot_state_channel)
+
+            # Visit frequency map (with obstacles masked out)
+            if self.use_visit_frequency_channel:
+                vfm = self._get_local_visit_frequency_map(self.global_visit_freq_map, self.robot_position, self.robot_heading)
+                channels.append(vfm)
+
         # Additional channels
         if self.use_shortest_path_channel:
             global_shortest_path_map = self._create_global_shortest_path_map(self.robot_position)
             channels.append(self._get_local_distance_map(global_shortest_path_map, self.robot_position, self.robot_heading))
 
+        if self.use_boundary_gradient_channel:
+            global_boundary_gradient_map = self._create_global_boundary_gradient_map()
+            channels.append(self._get_local_boundary_gradient_map(global_boundary_gradient_map, self.robot_position, self.robot_heading))
+
         assert all(channel.dtype == np.float32 for channel in channels)
-        return np.stack(channels, axis=2)
+        stacked_state = np.stack(channels, axis=2)
+
+        return stacked_state
 
     def _shortest_path(self, source_position, target_position, check_straight=False, configuration_space=None):
         if configuration_space is None:
@@ -1037,7 +1096,7 @@ class Environment:
         # Run SPFA
         source_i, source_j = self._closest_valid_cspace_indices(source_i, source_j)  # Note: does not use the cspace passed into this method
         target_i, target_j = self._closest_valid_cspace_indices(target_i, target_j)
-        _, parents = spfa.spfa(configuration_space, (source_i, source_j))
+        _, parents = spfa_pointwise(configuration_space, (source_i, source_j))
 
         # Recover shortest path
         parents_ij = np.stack((parents // parents.shape[1], parents % parents.shape[1]), axis=2)

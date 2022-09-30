@@ -20,6 +20,7 @@ def read_config(config_path):
     return cfg
 
 def write_config(cfg, config_path):
+    print("Writing config to", config_path)
     with open(config_path, 'w') as f:
         f.write(cfg.toYAML())
 
@@ -88,6 +89,11 @@ def get_env_from_cfg(cfg, physical_env=False, **kwargs):
     for kwarg_name in kwarg_list:
         original_kwargs[kwarg_name] = cfg[kwarg_name]
     original_kwargs.update(kwargs)
+    # TODO Bad fix to add optional 'use_ivfm' key
+    if 'use_ivfm' in cfg:
+        original_kwargs['use_ivfm'] = cfg['use_ivfm']
+    if 'use_boundary_gradient_channel' in cfg:
+        original_kwargs['use_boundary_gradient_channel'] = cfg['use_boundary_gradient_channel']
     if physical_env:
         return environment.RealEnvironment(**original_kwargs)
     return environment.Environment(**original_kwargs)

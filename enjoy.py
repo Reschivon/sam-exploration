@@ -9,7 +9,7 @@ def main(args):
         print('Please provide a config path')
         return
     cfg = utils.read_config(config_path)
-    env = utils.get_env_from_cfg(cfg, use_gui=True)
+    env = utils.get_env_from_cfg(cfg, use_gui=True, show_state_representation=True)
     policy = utils.get_policy_from_cfg(cfg, env.get_action_space())
     state = env.reset()
     while True:
