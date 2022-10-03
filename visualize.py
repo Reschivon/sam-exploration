@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
 
 _seed = 9
 _eps = 200
@@ -9,7 +10,7 @@ _eps = 200
 
 class result():
     def __init__(self, _fn):
-        self.path = "./eval/20220926T024451181854-large_columns_sigmoid.npy"
+        self.path = sys.argv[1]
         self.file = np.load(self.path, allow_pickle=True).squeeze()
         self.name = _fn
         self.eps = _eps
@@ -101,7 +102,7 @@ axs[2].set_title('The PEs for SAM-IVFM over 200 Testing Episodes')
 #axs[2].legend()
 
 print(f"GRER avg: {np.mean(res.np_rer_lst)}, " +
-        f"GE avg {np.mean(res.np_ce_lst)}, " +
+        f"CE avg {np.mean(res.np_ce_lst)}, " +
         f"PE avg: {np.mean(res.np_pe_lst)}")
 
 plt.show()
