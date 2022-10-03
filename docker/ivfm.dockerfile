@@ -1,5 +1,5 @@
 # Base image
-FROM nvidia/cudagl:10.1-devel-ubuntu16.04
+FROM nvidia/cuda:11.3.1-devel-ubuntu20.04
 
 # Setup basic packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -38,11 +38,11 @@ ENV PATH /opt/conda/bin:$PATH
 # RUN cmake --version
 
 # Conda environment
-RUN conda env create -n sam-exp --file=sam-exp.yml
-conda activate sam-exp
+# RUN conda env create -n sam-exp --file=sam-exp.yml
+# RUN conda activate sam-exp
 
 # Make RUN commands use the new environment:
-SHELL ["conda", "run", "-n", "sam-exp", "/bin/bash", "-c"]
+# SHELL ["conda", "run", "-n", "sam-exp", "/bin/bash", "-c"]
 
 # Install torch and cuda at correct version
 # RUN pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113
@@ -57,11 +57,11 @@ SHELL ["conda", "run", "-n", "sam-exp", "/bin/bash", "-c"]
 # RUN conda install habitat-sim withbullet headless -c conda-forge -c aihabitat
 
 # Setup conda environment (need to manually activate in interactive mode)
-ENV PATH /opt/conda/envs/habitat/sam-exp/bin:$PATH
-RUN conda init bash && \
-    . /root/.bashrc 
+# ENV PATH /opt/conda/envs/habitat/sam-exp/bin:$PATH
+# RUN conda init bash && \
+#     . /root/.bashrc 
 
-WORKDIR /sam-exploration
+# WORKDIR /sam-exploration
 
 # Silence habitat-sim logs
 # ENV GLOG_minloglevel=2
