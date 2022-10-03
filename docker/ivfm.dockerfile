@@ -31,11 +31,11 @@ RUN curl -L -o ~/miniconda.sh -O  https://repo.continuum.io/miniconda/Miniconda3
 ENV PATH /opt/conda/bin:$PATH
 
 # Install cmake
-RUN wget https://github.com/Kitware/CMake/releases/download/v3.14.0/cmake-3.14.0-Linux-x86_64.sh
-RUN mkdir /opt/cmake
-RUN sh /cmake-3.14.0-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
-RUN ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
-RUN cmake --version
+# RUN wget https://github.com/Kitware/CMake/releases/download/v3.14.0/cmake-3.14.0-Linux-x86_64.sh
+# RUN mkdir /opt/cmake
+# RUN sh /cmake-3.14.0-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
+# RUN ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
+# RUN cmake --version
 
 # Conda environment
 RUN conda env create -n sam-exp --file=sam-exp.yml
@@ -50,19 +50,19 @@ SHELL ["conda", "run", "-n", "sam-exp", "/bin/bash", "-c"]
 # RUN conda install -y pytorch torchvision torchaudio cudatoolkit=11.1 -c pytorch -c nvidia
 
 # Install sam repo
-RUN git clone --branch stable https://github.com/z
-RUN /bin/bash -c ". activate habitat; cd habitat-lab; python setup.py install"
+# RUN git clone --branch stable https://github.com/z
+# RUN /bin/bash -c ". activate habitat; cd habitat-lab; python setup.py install"
 
 # Setup habitat-sim
-RUN conda install habitat-sim withbullet headless -c conda-forge -c aihabitat
+# RUN conda install habitat-sim withbullet headless -c conda-forge -c aihabitat
 
 # Setup conda environment (need to manually activate in interactive mode)
-ENV PATH /opt/conda/envs/habitat/bin:$PATH
+ENV PATH /opt/conda/envs/habitat/sam-exp/bin:$PATH
 RUN conda init bash && \
     . /root/.bashrc 
 
-WORKDIR /ivfm
+WORKDIR /sam-exploration
 
 # Silence habitat-sim logs
-ENV GLOG_minloglevel=2
-ENV MAGNUM_LOG="quiet"
+# ENV GLOG_minloglevel=2
+# ENV MAGNUM_LOG="quiet"
