@@ -77,7 +77,7 @@ class Environment:
             use_shortest_path_partial_rewards=False, exploration_reward=1, collision_penalty=1, nonmovement_penalty=1,
             use_shortest_path_movement=False, fixed_step_size=None, use_steering_commands=False, steering_commands_num_turns=4,
             ministep_size=0.25, inactivity_cutoff=100, random_seed=None,
-            use_gui=False, show_debug_annotations=False, show_occupancy_map=False, show_state_representation=False, use_opt_rule=0,
+            use_gui=False, show_debug_annotations=False, show_occupancy_map=False, show_state_representation=True, use_opt_rule=0,
         ):
         ################################################################################
         # Store arguments
@@ -806,27 +806,34 @@ class Environment:
         self.sr_plt.clf()
         self.sr_plt.ion()
 
+        num_channels = 4
+        if self.state_type == 'ivfm':
+            num_channels = 2
+        if self.state_type == 'igrad':
+            num_channels = 1
+
         ax1 = self.sr_plt.subplot(141)
         colors = self.sr_plt.imshow(state[:,:,0], cmap='plasma')
         self.sr_plt.gcf().colorbar(colors, ax=ax1)
         ax1.axis('off')
 
-        ax2 = self.sr_plt.subplot(142)
-        colors = self.sr_plt.imshow(state[:,:,1], cmap='plasma')
-        self.sr_plt.gcf().colorbar(colors, ax=ax2)
-        ax2.axis('off')
+        if num_channels > 1:
+            ax2 = self.sr_plt.subplot(142)
+            colors = self.sr_plt.imshow(state[:,:,1], cmap='plasma')
+            self.sr_plt.gcf().colorbar(colors, ax=ax2)
+            ax2.axis('off')
 
-        # TODO Bad fix: IVFM config has only 2 channels 
-        if self.state_type == 'vfm':
-            ax3 = self.sr_plt.subplot(143)
-            colors = self.sr_plt.imshow(state[:,:,2])
-            self.sr_plt.gcf().colorbar(colors, ax=ax3)
-            ax3.axis('off')
+            # TODO Bad fix: IVFM config has only 2 channels 
+            if num_channels > 2:
+                ax3 = self.sr_plt.subplot(143)
+                colors = self.sr_plt.imshow(state[:,:,2])
+                self.sr_plt.gcf().colorbar(colors, ax=ax3)
+                ax3.axis('off')
 
-            ax4 = self.sr_plt.subplot(144)
-            colors = self.sr_plt.imshow(state[:,:,3])
-            self.sr_plt.gcf().colorbar(colors, ax=ax4)
-            ax4.axis('off')
+                ax4 = self.sr_plt.subplot(144)
+                colors = self.sr_plt.imshow(state[:,:,3])
+                self.sr_plt.gcf().colorbar(colors, ax=ax4)
+                ax4.axis('off')
 
         self.sr_plt.pause(0.001)
 
@@ -1061,9 +1068,14 @@ class Environment:
             # Boundary gradient capped at 0.25
             global_boundary_gradient_map = self._create_global_boundary_gradient_map()
             local_boundary_gradient_map = self._get_local_boundary_gradient_map(global_boundary_gradient_map, self.robot_position, self.robot_heading)
+            local_boundary_gradient_map[untraversible_space > 0] = 0
+            local_boundary_gradient_map[robot_state > 0] = 0
+
+            print(np.max(local_boundary_gradient_map), np.min(local_boundary_gradient_map))
 
             # igrad with obstacles at value self.shortest_path_channel_scale 
             channels.append(self.shortest_path_channel_scale * np.minimum(robot_state + untraversible_space, 1) + local_boundary_gradient_map)
+
 
         # Separate channels
         else:   
