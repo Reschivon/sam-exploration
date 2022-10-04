@@ -21,7 +21,7 @@ ministep_size: 0.25
 model_path: null
 nonmovement_penalty: 15000
 num_cubes: 1
-num_input_channels: 2
+num_input_channels: 1
 obstacle_config: large_columns
 policy_type: dense_action_space
 partial_rewards_scale: 2.0
@@ -38,7 +38,7 @@ total_timesteps: 25000
 use_double_dqn: true
 use_position_channel: false
 use_visit_frequency_channel: true
-state_type: 'ivfm_with_grad'
+state_type: 'igrad'
 use_shortest_path_channel: false
 use_shortest_path_movement: true
 use_shortest_path_partial_rewards: true

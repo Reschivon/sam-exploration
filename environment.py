@@ -72,8 +72,7 @@ class Environment:
         # pylint: disable=bad-continuation
         # This comment is here to make code folding work
             self, room_length=1.0, room_width=0.5, num_cubes=10, obstacle_config='small_empty',
-            use_visit_frequency_channel=True, use_ivfm=False, use_shortest_path_channel=False, shortest_path_channel_scale=0.25,
-            use_boundary_gradient_channel=False,
+            use_visit_frequency_channel=True, state_type='vfm', use_shortest_path_channel=False, shortest_path_channel_scale=0.25,
             use_position_channel=False, position_channel_scale=0.25, partial_rewards_scale=2.0, 
             use_shortest_path_partial_rewards=False, exploration_reward=1, collision_penalty=1, nonmovement_penalty=1,
             use_shortest_path_movement=False, fixed_step_size=None, use_steering_commands=False, steering_commands_num_turns=4,
@@ -92,12 +91,11 @@ class Environment:
         # State representation
         self.use_shortest_path_channel = use_shortest_path_channel
         self.use_visit_frequency_channel = use_visit_frequency_channel
-        self.use_ivfm = use_ivfm # Overrides use_visit_frequency_channel
+        self.state_type = state_type # Overrides use_visit_frequency_channel
         self.shortest_path_channel_scale = shortest_path_channel_scale
         self.use_position_channel = use_position_channel
         self.use_opt_rule = use_opt_rule
         self.position_channel_scale = position_channel_scale
-        self.use_boundary_gradient_channel = use_boundary_gradient_channel
 
         # Rewards
         self.exploration_reward = exploration_reward
@@ -819,7 +817,7 @@ class Environment:
         ax2.axis('off')
 
         # TODO Bad fix: IVFM config has only 2 channels 
-        if not self.use_ivfm:
+        if self.state_type == 'vfm':
             ax3 = self.sr_plt.subplot(143)
             colors = self.sr_plt.imshow(state[:,:,2])
             self.sr_plt.gcf().colorbar(colors, ax=ax3)
@@ -1036,7 +1034,7 @@ class Environment:
         channels = []
 
         # Merged channels
-        if self.use_ivfm:
+        if self.state_type == 'ivfm':
             # Untraversible space 
             untraversible_space = 1 - self._get_local_map(self.configuration_space, self.robot_position, self.robot_heading)
 
@@ -1051,6 +1049,21 @@ class Environment:
 
             # IVFM with 10 reserved for obstacles
             channels.append(10 * np.minimum(robot_state + untraversible_space, 1) + vfm_capped)
+
+        # IVFM but with boundary gradient
+        elif self.state_type == 'igrad':
+            # Untraversible space 
+            untraversible_space = 1 - self._get_local_map(self.configuration_space, self.robot_position, self.robot_heading)
+
+            # Robot collision mask
+            robot_state = self.robot_state_channel
+
+            # Boundary gradient capped at 0.25
+            global_boundary_gradient_map = self._create_global_boundary_gradient_map()
+            local_boundary_gradient_map = self._get_local_boundary_gradient_map(global_boundary_gradient_map, self.robot_position, self.robot_heading)
+
+            # igrad with obstacles at value self.shortest_path_channel_scale 
+            channels.append(self.shortest_path_channel_scale * np.minimum(robot_state + untraversible_space, 1) + local_boundary_gradient_map)
 
         # Separate channels
         else:   
@@ -1070,7 +1083,7 @@ class Environment:
             global_shortest_path_map = self._create_global_shortest_path_map(self.robot_position)
             channels.append(self._get_local_distance_map(global_shortest_path_map, self.robot_position, self.robot_heading))
 
-        if self.use_boundary_gradient_channel:
+        if self.state_type == 'ivfm_with_grad':
             global_boundary_gradient_map = self._create_global_boundary_gradient_map()
             channels.append(self._get_local_boundary_gradient_map(global_boundary_gradient_map, self.robot_position, self.robot_heading))
 
