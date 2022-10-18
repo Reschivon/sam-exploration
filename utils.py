@@ -115,6 +115,8 @@ def to_uint8_image(image):
     return np.round(255.0 * image).astype(np.uint8)
 
 def get_state_visualization(state):
+    if state.shape[2] == 1:
+        return np.stack([state[:, :, 0], state[:, :, 0], state[:, :, 0]], axis=2)  # (robot_state_channel, overhead_map, overhead_map)
     if state.shape[2] == 2:
         return np.stack([state[:, :, 1], state[:, :, 0], state[:, :, 0]], axis=2)  # (robot_state_channel, overhead_map, overhead_map)
     return np.stack([state[:, :, 1], state[:, :, 0], state[:, :, -1]], axis=2)  # (robot_state_channel, overhead_map, distance_channel)

@@ -77,7 +77,7 @@ class Environment:
             use_shortest_path_partial_rewards=False, exploration_reward=1, collision_penalty=1, nonmovement_penalty=1,
             use_shortest_path_movement=False, fixed_step_size=None, use_steering_commands=False, steering_commands_num_turns=4,
             ministep_size=0.25, inactivity_cutoff=100, random_seed=None,
-            use_gui=False, show_debug_annotations=False, show_occupancy_map=False, show_state_representation=True, use_opt_rule=0,
+            use_gui=False, show_debug_annotations=False, show_occupancy_map=False, show_state_representation=False, use_opt_rule=0,
         ):
         ################################################################################
         # Store arguments
