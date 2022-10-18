@@ -7,7 +7,7 @@ checkpoints_dir: checkpoints
 collision_penalty: 15000
 exploration_reward: 1
 discount_factor: 0.99
-experiment_name: large_columns_sigmoid
+experiment_name: large_columns_ivfm_sigmoid
 exploration_timesteps: 3000
 final_exploration: 0.1
 fixed_step_size: null
