@@ -51,11 +51,11 @@ class DQNPolicy:
 class SteeringCommandsPolicy(DQNPolicy):
     def build_network(self):
         #return torch.nn.DataParallel(
-            models.SteeringCommandsDQN(num_input_channels=self.cfg.num_input_channels, num_output_channels=self.action_space) \
+        return models.SteeringCommandsDQN(num_input_channels=self.cfg.num_input_channels, num_output_channels=self.action_space) \
         .to(self.device)
 
 class DenseActionSpacePolicy(DQNPolicy):
     def build_network(self):
         #return torch.nn.DataParallel(
-            models.DenseActionSpaceDQN(num_input_channels=self.cfg.num_input_channels) \
+        return models.DenseActionSpaceDQN(num_input_channels=self.cfg.num_input_channels) \
         .to(self.device)
