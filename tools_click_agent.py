@@ -25,7 +25,7 @@ class ClickAgent:
         cv2.imshow(self.window_name, np.concatenate((reward_img, state_img), axis=0))
 
     def run(self):
-        state = self.env.reset()
+        state = self.env.reset(0)
         last_reward = 0
         last_ministeps = 0
 
@@ -43,7 +43,7 @@ class ClickAgent:
 
             if self.selected_action is not None:
                 action = self.selected_action[0] * self.env.get_state_width() + self.selected_action[1]
-                state, reward, done, info = self.env.step(action)
+                state, reward, done, info = self.env.step(action, 0)
                 last_reward = reward
                 last_ministeps = info['ministeps']
                 self.selected_action = None
@@ -52,7 +52,7 @@ class ClickAgent:
                 pass
 
             if done or force_reset_env:
-                state = self.env.reset()
+                state = self.env.reset(0)
                 done = False
                 force_reset_env = False
                 last_reward = 0
@@ -68,8 +68,9 @@ def main():
 
     # Room config
     kwargs = {}
-    kwargs['room_width'] = 1 if obstacle_config.startswith('large') else 0.5
-    kwargs['num_cubes'] = 20 if obstacle_config.startswith('large') else 10
+    kwargs['room_width'] = 3 if obstacle_config.startswith('large') else 3
+    kwargs['room_length'] = 3 if obstacle_config.startswith('large') else 3
+    kwargs['num_cubes'] = 1 if obstacle_config.startswith('large') else 1
     kwargs['obstacle_config'] = obstacle_config
     #kwargs['random_seed'] = 0
 
@@ -77,6 +78,8 @@ def main():
     kwargs['use_gui'] = True
     kwargs['show_debug_annotations'] = True
     #kwargs['show_occupancy_map'] = True
+
+    kwargs['state_type'] = 'hyperbolic'
 
     # Shortest path components
     #kwargs['use_distance_to_receptacle_channel'] = False

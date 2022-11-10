@@ -81,7 +81,8 @@ def train(cfg, policy_net, target_net, optimizer, batch, transform_func):
 
     return train_info
 
-def main(cfg):
+def main(cfg):    
+
     # Set up logging and checkpointing
     log_dir = Path(cfg.log_dir)
     checkpoint_dir = Path(cfg.checkpoint_dir)
@@ -91,6 +92,9 @@ def main(cfg):
     # Create environment
     kwargs = {}
     kwargs['use_gui'] = False
+    kwargs['show_state_representation'] = False
+    kwargs['show_occupancy_map'] = False
+
     if sys.platform == 'darwin':
         kwargs['use_gui'] = True
     env = utils.get_env_from_cfg(cfg, **kwargs)
@@ -125,34 +129,39 @@ def main(cfg):
     visualization_summary_writer = SummaryWriter(log_dir=str(log_dir / 'visualization'))
     meters = Meters()
 
-    state = env.reset()
+    states = [env.reset(robot_index) for robot_index in range(env.num_agents)]
+    done = False
+
     total_timesteps_with_warm_up = cfg.learning_starts + cfg.total_timesteps
     
+    #for timestep in range(start_timestep, total_timesteps_with_warm_up):
     for timestep in tqdm(range(start_timestep, total_timesteps_with_warm_up),
                          initial=start_timestep, total=total_timesteps_with_warm_up, file=sys.stdout):
 
-    #for timestep in range(start_timestep, total_timesteps_with_warm_up):
         start_time = time.time()
 
-        # Select an action
-        if cfg.exploration_timesteps > 0:
-            exploration_eps = 1 - min(max(timestep - cfg.learning_starts, 0) / cfg.exploration_timesteps, 1) * (1 - cfg.final_exploration)
-        else:
-            exploration_eps = cfg.final_exploration
-        action, _ = policy.step(state, exploration_eps=exploration_eps)
+        for robot_index in range(env.num_agents):
+            # Select an action
+            if cfg.exploration_timesteps > 0:
+                exploration_eps = 1 - min(max(timestep - cfg.learning_starts, 0) / cfg.exploration_timesteps, 1) * (1 - cfg.final_exploration)
+            else:
+                exploration_eps = cfg.final_exploration
 
-        # Step the simulation
-        next_state, reward, done, info = env.step(action)
-        ministeps = info['ministeps']
+            action, _ = policy.step(states[robot_index], exploration_eps=exploration_eps)
 
-        # Store in buffer
-        replay_buffer.push(state, action, reward, ministeps, next_state)
-        state = next_state
+            # Step the simulation
+            next_state, curr_reward, curr_done, info = env.step(action, robot_index)
+            ministeps = info['ministeps']
 
-        # Reset if episode ended
-        if done:
-            state = env.reset()
-            episode += 1
+            # Store in buffer
+            replay_buffer.push(states[robot_index], action, curr_reward, ministeps, next_state)
+            state = next_state
+
+            # Reset if episode ended
+            if curr_done:
+                done = True
+                states = [env.reset(robot_index) for robot_index in range(env.num_agents)]
+                episode += 1
 
         # Train network
         if timestep >= cfg.learning_starts:
@@ -270,7 +279,7 @@ class Meters:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('config_path')
+    parser.add_argument('--config-path')
     config_path = parser.parse_args().config_path
     print("Config path", config_path)
     config_path = utils.setup_run(config_path)

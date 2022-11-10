@@ -85,13 +85,18 @@ def get_env_from_cfg(cfg, physical_env=False, **kwargs):
         'use_shortest_path_movement', 'fixed_step_size', 'use_steering_commands', 'steering_commands_num_turns',
         'ministep_size', 'inactivity_cutoff', 'random_seed', 'use_opt_rule',
     ]
+    optional_kwarg_list = [
+        'state_type', 'num_agents', 'show_state_representation', 'use_gui', 'show_occupancy_map', 'step_limit'
+    ]
     original_kwargs = {}
     for kwarg_name in kwarg_list:
         original_kwargs[kwarg_name] = cfg[kwarg_name]
     original_kwargs.update(kwargs)
-    # TODO Bad fix to add optional 'state_type' key
-    if 'state_type' in cfg:
-        original_kwargs['state_type'] = cfg['state_type']
+
+    for key in optional_kwarg_list:
+        if key in cfg:
+            original_kwargs[key] = cfg[key]
+            
     if physical_env:
         return environment.RealEnvironment(**original_kwargs)
     return environment.Environment(**original_kwargs)

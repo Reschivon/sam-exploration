@@ -1,4 +1,5 @@
 # Prevent numpy from using up all cpu
+from math import fabs
 import os
 os.environ['MKL_NUM_THREADS'] = '1'  # pylint: disable=wrong-import-position
 import argparse
@@ -7,17 +8,28 @@ import numpy as np
 import utils
 import time
 
-def _run_eval(cfg, num_episodes=200):
+def _run_eval(cfg, num_episodes=40):
+
+    # Customize env arguments
+    cfg['use_gui'] = False
+    cfg['show_state_representation'] = False
+    cfg['show_occupancy_map'] = True
+
     env = utils.get_env_from_cfg(cfg, random_seed=9)
     policy = utils.get_policy_from_cfg(cfg, env.get_action_space(), random_seed=9)
     data = [[] for _ in range(num_episodes)]
     episode_count = 0
-    state = env.reset()
+    states = [env.reset(robot_index) for robot_index in range(env.num_agents)]
     start_time = time.time()
     end_time = time.time()
+    done = False
     while True:
-        action, _ = policy.step(state)
-        state, _, done, info = env.step(action)
+        for robot_index in range(env.num_agents):
+            action, _ = policy.step(states[robot_index])
+            curr_state, _, curr_done, info = env.step(action, robot_index)
+            states[robot_index] = curr_state
+            done = True if curr_done else done
+
         end_time = time.time()
         data[episode_count].append({'cube_found': info['cube_found'],\
                                     'cumulative_distance': info['cumulative_distance'],\
@@ -26,11 +38,13 @@ def _run_eval(cfg, num_episodes=200):
         
         time_elasped = end_time - start_time
         if done or time_elasped > 600:
-            state = env.reset()
+            for robot_index in range(env.num_agents):
+                env.reset(robot_index)
             start_time = time.time()
             episode_count += 1
             if done:
                 print('Completed {}/{} episodes'.format(episode_count, num_episodes))
+                done = False
             if time_elasped > 600:
                 print('Failed to complete episode:', episode_count)
                 data[episode_count].append({'cube_found': done,\
@@ -55,7 +69,7 @@ def main(args):
         eval_dir.mkdir(parents=True, exist_ok=True)
 
     eval_path = eval_dir / '{}.npy'.format(cfg.run_name)
-    data = _run_eval(cfg)
+    data = _run_eval(cfg, num_episodes=10)
     np.save(eval_path, data)
     print(eval_path)
 

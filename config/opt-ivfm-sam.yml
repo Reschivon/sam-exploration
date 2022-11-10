@@ -30,7 +30,7 @@ random_seed: null
 replay_buffer_size: 6000
 room_length: 3.0
 room_width: 3.0
-run_name:
+run_name: ivfm
 shortest_path_channel_scale: 0.25
 steering_commands_num_turns: 4
 target_update_freq: 1000
