@@ -25,7 +25,7 @@ class ClickAgent:
         cv2.imshow(self.window_name, np.concatenate((reward_img, state_img), axis=0))
 
     def run(self):
-        state = self.env.reset(0)
+        state, state_info = self.env.reset(0)
         last_reward = 0
         last_ministeps = 0
 

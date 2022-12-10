@@ -11,12 +11,12 @@ def main(args):
     cfg = utils.read_config(config_path)
     env = utils.get_env_from_cfg(cfg, use_gui=True, show_state_representation=True)
     policy = utils.get_policy_from_cfg(cfg, env.get_action_space())
-    state = env.reset()
+    state, state_info = env.reset()
     while True:
         action, _ = policy.step(state)
         state, _, done, _ = env.step(action)
         if done:
-            state = env.reset()
+            state, state_info = env.reset()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

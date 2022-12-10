@@ -56,64 +56,69 @@ class result():
         print('    pe:', self.pe / len(self.pe_lst), ' std:', np.std(self.np_pe_lst))
         print('    not_found:', self.fail)
 
-#####################################################################
-# Create results
+def visualize(pathname):
+    #####################################################################
+    # Create results
 
-result_list = []
-# result_list.append(result("SAM"))
-# result_list.append(result("ST-COM"))
-# result_list.append(result("SAM-VFM (A)"))
-# result_list.append(result("SAM-VFM (B)"))
-# result_list.append(result("RAND"))
-res = result(sys.argv[1], '2 Agent')
-result_list.append(res)
+    result_list = []
+    # result_list.append(result("SAM"))
+    # result_list.append(result("ST-COM"))
+    # result_list.append(result("SAM-VFM (A)"))
+    # result_list.append(result("SAM-VFM (B)"))
+    # result_list.append(result("RAND"))
+    res = result(pathname, '2 Agent')
+    result_list.append(res)
 
-for res in result_list:
-    res.print_stats()
+    for res in result_list:
+        res.print_stats()
 
-#####################################################################
-# Make the plot
+    #####################################################################
+    # Make the plot
 
-# color list
-color_list = ['b-', 'g-', 'r-', 'y-', 'co', 'mo']
+    # color list
+    color_list = ['b-', 'g-', 'r-', 'y-', 'co', 'mo']
 
-# create x axis
-x_axis = range(res.eps)
-fig, axs = plt.subplots(4, 1)
+    # create x axis
+    x_axis = range(res.eps)
+    fig, axs = plt.subplots(4, 1)
 
-# Upper image
-for i in range(len(result_list)):
-    res = result_list[i]
-    axs[0].plot(x_axis, np.sort(res.np_rer_lst), color_list[i], label=res.name)
-axs[0].set(ylabel = 'GRER')
-axs[0].set_title(f'The GRER over {res.eps} Testing Episodes for one agent')
-axs[0].legend()
+    # Upper image
+    for i in range(len(result_list)):
+        res = result_list[i]
+        axs[0].plot(x_axis, np.sort(res.np_rer_lst), color_list[i], label=res.name)
+    axs[0].set(ylabel = 'GRER')
+    axs[0].set_title(f'The GRER over {res.eps} Testing Episodes for one agent')
+    axs[0].legend()
 
-# Lower image
-for i in range(len(result_list)):
-    res = result_list[i]
-    axs[1].plot(x_axis, np.sort(res.np_ce_lst), color_list[i], label=res.name)
-axs[1].set(ylabel = 'CE')
-axs[1].set_title(f'The GEs over {res.eps} Testing Episodes for one agent')
-#axs[1].legend()
+    # Lower image
+    for i in range(len(result_list)):
+        res = result_list[i]
+        axs[1].plot(x_axis, np.sort(res.np_ce_lst), color_list[i], label=res.name)
+    axs[1].set(ylabel = 'CE')
+    axs[1].set_title(f'The GEs over {res.eps} Testing Episodes for one agent')
+    #axs[1].legend()
 
-# Lower image
-for i in range(len(result_list)):
-    res = result_list[i]
-    axs[2].plot(x_axis, np.sort(res.np_pe_lst), color_list[i], label=res.name)
-axs[2].set(xlabel='episodes', ylabel = 'PE')
-axs[2].set_title(f'The PEs over {res.eps} Testing Episodes for one agent')
-#axs[2].legend()
+    # Lower image
+    for i in range(len(result_list)):
+        res = result_list[i]
+        axs[2].plot(x_axis, np.sort(res.np_pe_lst), color_list[i], label=res.name)
+    axs[2].set(xlabel='episodes', ylabel = 'PE')
+    axs[2].set_title(f'The PEs over {res.eps} Testing Episodes for one agent')
+    #axs[2].legend()
 
-for i in range(len(result_list)):
-    res = result_list[i]
-    axs[3].plot(x_axis, np.sort(res.np_cmd_1st), color_list[i], label=res.name)
-axs[3].set(xlabel='episodes', ylabel = 'Cmds')
-axs[3].set_title(f'The Cmds over {res.eps} Testing Episodes for one agent')
+    for i in range(len(result_list)):
+        res = result_list[i]
+        axs[3].plot(x_axis, np.sort(res.np_cmd_1st), color_list[i], label=res.name)
+    axs[3].set(xlabel='episodes', ylabel = 'Cmds')
+    axs[3].set_title(f'The Cmds over {res.eps} Testing Episodes for one agent')
 
-print(f"GRER avg: {np.mean(res.np_rer_lst)}, " +
-      f"CE avg {np.mean(res.np_ce_lst)}, " +
-      f"PE avg: {np.mean(res.np_pe_lst)}"
-    )
+    print(f"GRER avg: {np.mean(res.np_rer_lst)}, " +
+        f"CE avg {np.mean(res.np_ce_lst)}, " +
+        f"PE avg: {np.mean(res.np_pe_lst)} "
+        f"CMD avg: {np.mean(res.np_cmd_1st)}"
+        )
 
-plt.show()
+    plt.show()
+
+if __name__ == '__main__':
+    visualize(sys.argv[1])

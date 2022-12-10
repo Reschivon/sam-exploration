@@ -86,7 +86,8 @@ def get_env_from_cfg(cfg, physical_env=False, **kwargs):
         'ministep_size', 'inactivity_cutoff', 'random_seed', 'use_opt_rule',
     ]
     optional_kwarg_list = [
-        'state_type', 'num_agents', 'show_state_representation', 'use_gui', 'show_occupancy_map', 'step_limit'
+        'state_type', 'num_agents', 'show_state_representation', 'use_gui', 'show_occupancy_map', 'step_limit',
+        'theoretical_exploration', 'hyperbolic_zoom'
     ]
     original_kwargs = {}
     for kwarg_name in kwarg_list:
@@ -101,7 +102,14 @@ def get_env_from_cfg(cfg, physical_env=False, **kwargs):
         return environment.RealEnvironment(**original_kwargs)
     return environment.Environment(**original_kwargs)
 
-def get_policy_from_cfg(cfg, action_space, **kwargs):
+def get_policy_from_cfg(cfg, action_space, static_model_path=None, **kwargs):
+    cfg = cfg.copy()
+
+    if static_model_path is not None:
+        kwargs['train'] = True
+        cfg.checkpoint_path = 'exists'
+        cfg.model_path = static_model_path
+
     if cfg.policy_type == 'steering_commands':
         return policies.SteeringCommandsPolicy(cfg, action_space, **kwargs)
     if cfg.policy_type == 'dense_action_space':
