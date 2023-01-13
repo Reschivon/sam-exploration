@@ -3,7 +3,6 @@ import torch
 from torchvision import transforms
 import models
 
-
 class DQNPolicy:
     def __init__(self, cfg, action_space, train=False, random_seed=None):
         self.cfg = cfg
@@ -62,5 +61,9 @@ class DenseActionSpacePolicy(DQNPolicy):
         return torch.nn.DataParallel(
             models.DenseActionSpaceDQN(num_input_channels=self.cfg.num_input_channels) \
         ).to(self.device)
+
+class DeepLabPolicy(DQNPolicy):
+    def build_network(self):
+       return models.deeplabv3_resnet50(num_input_channels=self.cfg.num_input_channels).to(self.device)
 
         # return models.DenseActionSpaceDQN(num_input_channels=self.cfg.num_input_channels).to(self.device)

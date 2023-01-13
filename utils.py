@@ -114,6 +114,8 @@ def get_policy_from_cfg(cfg, action_space, static_model_path=None, **kwargs):
         return policies.SteeringCommandsPolicy(cfg, action_space, **kwargs)
     if cfg.policy_type == 'dense_action_space':
         return policies.DenseActionSpacePolicy(cfg, action_space, **kwargs)
+    if cfg.policy_type == 'deeplab':
+        return policies.DeepLabPolicy(cfg, action_space, **kwargs)
     raise Exception
 
 ################################################################################

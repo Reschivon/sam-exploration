@@ -22,7 +22,7 @@ nonmovement_penalty: 15000
 num_cubes: 1
 num_input_channels: 4
 obstacle_config: large_columns
-policy_type: dense_action_space
+policy_type: deeplab
 partial_rewards_scale: 2.0
 position_channel_scale: 0.25
 random_seed: null

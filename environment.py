@@ -203,10 +203,10 @@ class Environment:
         self.closest_cspace_indices = None
         self.occupancy_map = None
 
-        # if self.show_state_representation:
-        COLS = 4
-        plt.ion()
-        self.sr_plt, self.sr_subplots = plt.subplots(self.num_agents, COLS, figsize=(20, 4))
+        if self.show_state_representation:
+            COLS = 4
+            plt.ion()
+            self.sr_plt, self.sr_subplots = plt.subplots(self.num_agents, COLS, figsize=(20, 4))
 
         if self.show_occupancy_map:
             self.plt = plt.figure(0, figsize=(9, 9 * self.room_width / self.room_length))
@@ -1280,7 +1280,8 @@ class Environment:
 
         assert all(channel.dtype == np.float32 for channel in channels)
         stacked_state = np.stack(channels, axis=2)
-        info['euclidean_state'] = np.stack(info['euclidean_state'], axis=-1)
+
+        info['euclidean_state'] = stacked_state if info['euclidean_state'] is None else np.stack(info['euclidean_state'], axis=-1)
         return stacked_state, info
 
     def _shortest_path(self, source_position, target_position, check_straight=False, configuration_space=None):
