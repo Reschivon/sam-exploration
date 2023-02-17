@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 import cv2
 import random
 
-def find_frontier(map, config_space, pixels_per_chunk=150, display=True):
+def find_frontier(map, config_space, pixels_per_chunk=150, display=False):
     contours, hierarchy = cv2.findContours((map).astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     if display:
@@ -31,7 +31,7 @@ def find_frontier(map, config_space, pixels_per_chunk=150, display=True):
                                contour[i+1][0][0] - contour[i][0][0])
             if dist > pixels_per_chunk:
                 # Rnadom sample to prevent stuck
-                sample = random.betavariate(15, 15) * num
+                sample = int(random.betavariate(15, 15) * num)
                 frontier_list.append((contour[i - sample][0][1],
                                        contour[i - sample][0][0]))
                 if display:

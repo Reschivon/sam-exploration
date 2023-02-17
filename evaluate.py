@@ -19,7 +19,7 @@ def _run_eval(cfg, num_episodes=40):
     # Customize env arguments
     cfg['use_gui'] = False
     cfg['show_state_representation'] = False
-    cfg['show_occupancy_map'] = True
+    cfg['show_occupancy_map'] = False
 
     env = utils.get_env_from_cfg(cfg, random_seed=9)
     policy = utils.get_policy_from_cfg(cfg, env.get_action_space(), random_seed=9)
