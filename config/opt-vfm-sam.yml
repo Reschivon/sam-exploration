@@ -41,6 +41,7 @@ use_shortest_path_channel: true
 use_shortest_path_movement: true
 use_shortest_path_partial_rewards: true
 use_steering_commands: false
+frontier_exploration: false
 use_opt_rule: 2
 weight_decay: 0.0001
 

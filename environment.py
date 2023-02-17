@@ -288,15 +288,17 @@ class Environment:
         self.state_size = state.size
         return state, state_info
 
-    def step(self, action, robot_index):
-        return self._step(action, robot_index)
+    def step(self, action, robot_index, the_action_is_relative_pixels=False):
+        return self._step(action, robot_index, the_action_is_relative_pixels=the_action_is_relative_pixels)
 
-    def _step(self, action, robot_index, dry_run=False):
+    def _step(self, action, robot_index, dry_run=False, the_action_is_relative_pixels=False):
         ################################################################################
         # Setup
 
         # Store new action
         if self.use_steering_commands:
+            robot_action = action
+        elif the_action_is_relative_pixels:
             robot_action = action
         else:
             robot_action = np.unravel_index(action, (LOCAL_MAP_PIXEL_WIDTH, LOCAL_MAP_PIXEL_WIDTH))            
@@ -323,6 +325,7 @@ class Environment:
             else:
                 x_movement = -LOCAL_MAP_WIDTH / 2 + float(robot_action[1]) / LOCAL_MAP_PIXELS_PER_METER
                 y_movement = LOCAL_MAP_WIDTH / 2 - float(robot_action[0]) / LOCAL_MAP_PIXELS_PER_METER
+            
             if self.fixed_step_size is not None:
                 straight_line_dist = self.fixed_step_size + ROBOT_RADIUS
             else:
@@ -335,6 +338,15 @@ class Environment:
             robot_initial_position[1] + straight_line_dist * np.sin(straight_line_heading),
             0
         ]
+
+        if the_action_is_relative_pixels:
+            pose_m = pixel_indices_to_position(robot_action[0], robot_action[1], self.configuration_space.shape)
+            diff = pose_m[0] - robot_initial_position[0], pose_m[1] - robot_initial_position[1]
+            diff_dist = np.hypot(diff[0], diff[1])
+            diff_norm = diff[0] / diff_dist, diff[1] / diff_dist
+            robot_target_end_effector_position = [
+                pose_m[0] + diff_norm[0] * 0.3, pose_m[1] + diff_norm[1] * 0.3, 0
+            ]
 
         # Do not allow going outside the room
         diff = np.asarray(robot_target_end_effector_position) - np.asarray(robot_initial_position)
@@ -566,8 +578,8 @@ class Environment:
             overlapped_ratio = 0
             non_overlapped_ratio = 0
 
-        plt.imshow(multi_visit_sum)
-        plt.pause(0.01)
+        # plt.imshow(multi_visit_sum)
+        # plt.pause(0.01)
 
         # Bandwidth
         # In each step, the 'server' sends the state to the agent
@@ -626,6 +638,7 @@ class Environment:
         # plt.imshow(state_info['euclidean_state'][2])
         # plt.pause(0.0001)
 
+        # Merge dicts with '**'
         return state, reward, done, info
 
     @staticmethod
