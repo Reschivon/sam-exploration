@@ -264,7 +264,7 @@ class Environment:
         self.global_overhead_map = self._create_padded_room_zeros()
         self.occupancy_map = self._create_padded_room_zeros()
         self.global_visit_freq_map = self._create_padded_room_zeros()
-        self.multi_visit_map = self._create_padded_room_zeros_int()
+        self.multi_visit_map = [self._create_padded_room_zeros_type(bool) for _ in range(self.num_agents)]
         self.step_exploration = self._create_padded_room_zeros()
         if self.show_occupancy_map:
             self.free_space_map = self._create_padded_room_zeros()
@@ -283,9 +283,9 @@ class Environment:
         self.robot_cumulative_distance = 0
         self.robot_cumulative_reward = 0
 
-        ################################################################################
-
+        ################################################################################        
         state, state_info = self.get_state(robot_index)
+        self.state_size = state.size
         return state, state_info
 
     def step(self, action, robot_index):
@@ -477,6 +477,7 @@ class Environment:
             if sim_steps > self.step_limit:
                 break  # Note: self.robot_distance does not get not updated
 
+            occupancy_before_step = self.occupancy_map.copy()
             if sim_steps % MAP_UPDATE_STEPS == 0:
                 cube_found = self._update_state(robot_index)
 
@@ -491,6 +492,8 @@ class Environment:
                 if cube_found and not self.theoretical_exploration:
                     break
 
+            self.new_occ_size = self.min_crop_size(self.occupancy_map - occupancy_before_step)
+
         # Step the simulation until everything is still
         if cube_found == False:
             self._step_simulation_until_still()
@@ -498,13 +501,15 @@ class Environment:
         ################################################################################
         # Update state representation
 
+        self._update_vfm_state(robot_index)
+
         self.robot_position[robot_index], self.robot_heading[robot_index] = self._get_robot_pose(robot_index)
         if cube_found == False:
             cube_found = any(self._update_state(robot_ind) for robot_ind in range(self.num_agents))
         if self.show_occupancy_map:
             self._update_occupancy_map_visualization(robot_waypoint_positions, robot_target_end_effector_position)
         
-        self._update_vfm_state(robot_index)
+        self.step_exploration = self._create_padded_room_zeros()
 
         ################################################################################
         # Compute stats
@@ -546,17 +551,29 @@ class Environment:
         old_exp_penalty_scale = 1 * binary_old_exploration * current_exploration       
  
         # Repeated exploration ratio:
-        explored = self.multi_visit_map != 0
-        overlapped = self.multi_visit_map == -1
-        non_overlapped = self.multi_visit_map > 0
+        multi_visit_sum = self._create_padded_room_zeros_type(int)
+        for visits in self.multi_visit_map:
+            multi_visit_sum += visits
 
-        explored_sum = explored.sum()
+        overlapped = multi_visit_sum > 1
+        non_overlapped = multi_visit_sum == 1
+
+        explored_sum = (multi_visit_sum > 0).sum()
         if explored_sum != 0:
             overlapped_ratio = overlapped.sum() / explored_sum
             non_overlapped_ratio = non_overlapped.sum() / explored_sum
         else:
             overlapped_ratio = 0
             non_overlapped_ratio = 0
+
+        plt.imshow(multi_visit_sum)
+        plt.pause(0.01)
+
+        # Bandwidth
+        # In each step, the 'server' sends the state to the agent
+        updated_exploration_size = self.min_crop_size(self.step_exploration) + 2
+        updated_obstacle_size = self.new_occ_size + 2
+        bandwidth = self.state_size + updated_exploration_size + updated_obstacle_size
 
         # OPT-SAM 0: rules of icra 2021 work
         if self.use_opt_rule == 0:
@@ -602,7 +619,8 @@ class Environment:
             'non_overlapped_ratio': non_overlapped_ratio,
             'repetive_exploration_rate': repetitive_exploration_rate,
             'ratio_explored': ratio_explored,
-            'euclidean_state': state_info['euclidean_state']
+            'euclidean_state': state_info['euclidean_state'],
+            'bandwidth': bandwidth
         }
 
         # plt.imshow(state_info['euclidean_state'][2])
@@ -967,11 +985,11 @@ class Environment:
             int(2 * np.ceil((self.room_length * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2))
         ), dtype=np.float32)
     
-    def _create_padded_room_zeros_int(self):
+    def _create_padded_room_zeros_type(self, type):
         return np.zeros((
             int(2 * np.ceil((self.room_width * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2)),  # Ensure even
             int(2 * np.ceil((self.room_length * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2))
-        ), dtype=int)
+        ), dtype=type)
 
     def _create_local_position_map(self):
         local_position_map_x = np.zeros((LOCAL_MAP_PIXEL_WIDTH, LOCAL_MAP_PIXEL_WIDTH), dtype=np.float32)
@@ -1061,21 +1079,11 @@ class Environment:
         return points, seg, seg_visit, cube_found
 
     def _update_vfm_state(self, robot_index):
-        robot_index += 1
-
         self.global_visit_freq_map += self.step_exploration
         # If the multi_visit_map is unexplored, then claim
         # If the multi_visit_map has already been claimed, then set to -1 (overlap)
         recent_explored = self.step_exploration > 0
-        unexplored = self.multi_visit_map == 0
-        explored_by_others = np.logical_and(self.multi_visit_map > 0, self.multi_visit_map != robot_index) 
-        self.multi_visit_map[unexplored & recent_explored] = robot_index
-        self.multi_visit_map[explored_by_others & recent_explored] = -1
-
-        # plt.imshow(self.multi_visit_map)
-        # plt.pause(0.1)
-
-        self.step_exploration = self._create_padded_room_zeros()
+        self.multi_visit_map[robot_index][recent_explored] = True
 
     def _update_state(self, robot_index):
 
@@ -1085,8 +1093,9 @@ class Environment:
         augmented_points = np.concatenate((points, np.isclose(seg[:, :, np.newaxis], OBSTACLE_SEG_INDEX / MAX_SEG_INDEX)), axis=2).reshape(-1, 4)
         obstacle_points = augmented_points[np.isclose(augmented_points[:, 3], 1)]
         pixel_i, pixel_j = position_to_pixel_indices(obstacle_points[:, 0], obstacle_points[:, 1], self.occupancy_map.shape)
+        
         self.occupancy_map[pixel_i, pixel_j] += 1
-
+        
         if self.show_occupancy_map:
             free_space_points = augmented_points[np.isclose(augmented_points[:, 3], 0)]
             pixel_i, pixel_j = position_to_pixel_indices(free_space_points[:, 0], free_space_points[:, 1], self.free_space_map.shape)
@@ -1097,7 +1106,6 @@ class Environment:
         augmented_points = augmented_points[np.isclose(augmented_points[:, 3], 1)]
         pixel_i, pixel_j = position_to_pixel_indices(augmented_points[:, 0], augmented_points[:, 1], self.global_visit_freq_map.shape)
         self.step_exploration[pixel_i, pixel_j] = 1
-        
             
         # Update overhead map
         augmented_points = np.concatenate((points, seg[:, :, np.newaxis]), axis=2).reshape(-1, 4)
@@ -1182,6 +1190,29 @@ class Environment:
         ret = (2 * pixel_position[0] / inverse_dist,
                2 * pixel_position[1] / inverse_dist)
         return ret
+
+    @staticmethod
+    def min_crop_size(img):
+        '''
+        return the height and width of the minumum rectangular crop
+        that covers all nonzero elements of img (must be 2D)
+        '''
+        # https://stackoverflow.com/questions/39465812/how-to-crop-zero-edges-of-a-numpy-array
+
+        # coordinates of all nonzero
+        coords = np.argwhere(img)
+        if coords.size == 0:
+            top_left = (0, 0)
+            bottom_right = (0, 0)
+        else:
+            top_left = coords.min(axis=0)
+            bottom_right = coords.max(axis=0)
+
+        size = (bottom_right[0] + 1 - top_left[0], bottom_right[1] + 1 - top_left[1])
+        return size[0] * size[1]
+        # out = dat[top_left[0]:bottom_right[0]+1,  # plus 1 because slice isn't
+        #         top_left[1]:bottom_right[1]+1]  # inclusive
+
 
     @staticmethod
     def map_to_hyperbolic(pixel_position, hyperbolic_zoom=1):
