@@ -9,12 +9,13 @@ _eps = 200
 
 class result():
     def __init__(self, path):
-        self.file = np.load(self.path, allow_pickle=True).squeeze()
+        self.file = np.load(path, allow_pickle=True).squeeze()
         self.eps = _eps
         self.pass_eps = _eps
         this_rer, this_ce, this_pe = 0, 0, 0
         self.rer, self.ce, self.pe, self.fail = 0, 0, 0, 0
-        self.rer_list, self.ce_list, self.pe_list, self.cmd_list, self.bandwidth_list, self.coverage_list = [], [], [], [], [], []
+        self.rer_list, self.ce_list, self.pe_list, self.cmd_list, self.bandwidth_list, self.coverage_list, self.overlap_list =\
+              [], [], [], [], [], [], []
 
         for i in range(_eps):
             cmd_count = 0
@@ -24,8 +25,9 @@ class result():
             # calculate rer and ce
             this_rer = data['repetitive_exploration_rate'] - 1
             this_ce = float(data['explored_area']) / cmd_count
-            this_bandwidth = data['bandwidth']
+            # this_bandwidth = data['bandwidth']
             this_coverage = data['ratio_explored']
+            this_overlap = data['overlapped_ratio']
 
             self.rer += this_rer
             self.ce += this_ce
@@ -45,10 +47,13 @@ class result():
             self.cmd_list.append(cmd_count)
 
             # BANDWIDTH
-            self.bandwidth_list.append(this_bandwidth)
+            # self.bandwidth_list.append(this_bandwidth)
 
             #COVERAGE
             self.coverage_list.append(this_coverage)
+
+            # overlap
+            self.overlap_list.append(this_overlap)
 
 
             # calculate fail rate
@@ -61,36 +66,44 @@ class result():
             self.np_cmd_list = np.asarray(self.cmd_list)
             self.np_bandwidth_list = np.asarray(self.bandwidth_list)
             self.np_coverage_list = np.asarray(self.coverage_list)
+            self.np_overlap_list = np.asarray(self.overlap_list)
     
     def print_stats(self):
         def print_array(arr):
-            print(np.mean(arr), 'std:', np.std(arr))
+            print('\t', np.mean(arr), 'std:', np.std(arr))
 
-        print('    RER:')
+        print('RER:')
         print_array(self.np_rer_list)
 
-        print('    CE:')
+        print('CE:')
         print_array(self.np_ce_list)
 
-        print('    PE:')
+        print('PE:')
         print_array(self.np_pe_list)
 
-        print('    Commands:')
+        print('Commands:')
         print_array(self.np_cmd_list)
 
-        print('    Bandwidth:')
-        print_array(self.np_bandwidth_list)
+        print('Overlap Ratio:')
+        print_array(self.np_overlap_list)
 
-        print('    Coverage:') 
-        print_array(self.np_coverage_list)
+        # print('    Bandwidth:')
+        # print_array(self.np_bandwidth_list)
 
-        print('    not_found:', self.fail)
+        print('Coverage:') 
+        # only the last
+        print_array(self.np_coverage_list[-1])
+
+        print('not_found:\n\t', self.fail)
 
 #####################################################################
 # Create results
 def visualize(eval_path):
     res = result(eval_path)
     res.print_stats()
+
+if __name__ == '__main__':
+    visualize(sys.argv[1])
 
 #####################################################################
 # Make the plot
@@ -126,4 +139,4 @@ def visualize(eval_path):
 # axs[2].set_title('The PEs of SAM-VFM, SAM, and ST-COM over 200 Testing Episodes')
 # #axs[2].legend()
 
-plt.show()
+# plt.show()
