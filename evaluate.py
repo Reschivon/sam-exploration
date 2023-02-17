@@ -32,32 +32,40 @@ def _run_eval(cfg, num_episodes=40):
     done = False
     while True:
         if cfg['frontier_exploration']:
-            robot_poses = []
-            for robot_index in range(env.num_agents):
-                robot_position = env.robot_position[robot_index]
-                pix = environment.position_to_pixel_indices(robot_position[0], robot_position[1], env.configuration_space.shape)
-                robot_poses.append(pix)
+            # Get a list of points sampled from each frontier
             frontiers = frontier.find_frontier(env.global_visit_freq_map > 0, env.configuration_space + env.wall_map)
             # if not enough frontiers, add random
             for _ in range(env.num_agents - len(frontiers)):
                 frontiers.append((random.randint(0, env.configuration_space.shape[0]-1), 
                                   random.randint(0, env.configuration_space.shape[1]-1)))
+                
+            # Get a list of robot pixel poses
+            robot_poses = []
+            for robot_index in range(env.num_agents):
+                robot_position = env.robot_position[robot_index]
+                pix = environment.position_to_pixel_indices(robot_position[0], robot_position[1], env.configuration_space.shape)
+                robot_poses.append(pix)
             
+            # Get a cost matrix of (Robot Pose X Frontier Point)
             matrix = np.empty((len(robot_poses), len(frontiers)))
             for i, rp in enumerate(robot_poses):
                 for j, f in enumerate(frontiers):
                     matrix[i][j] = math.hypot(rp[0] - f[0], rp[1] - f[1])
-            print('\t', frontiers)
-            print(robot_poses[0], matrix[0])
-            print(robot_poses[1], matrix[1])
+            
+            # Allocate each robot to a frontier while minimizing total cost
             indexes = munkres.Munkres().compute(matrix)
-            print(indexes)
+
+            # print('\t', frontiers)
+            # print(robot_poses[0], matrix[0])
+            # print(robot_poses[1], matrix[1])
+            # print(indexes)
             indexes = sorted(indexes, key=lambda tup:tup[0])
 
         for robot_index in range(env.num_agents):
             if cfg['frontier_exploration']:
+                # For each robot, look up its assigned frontier point
                 target = frontiers[indexes[robot_index][1]]
-                print(robot_index, target)
+                # print(robot_index, target)
                 curr_state, _, curr_done, info = env.step(target, robot_index, the_action_is_relative_pixels=True)
             else:
                 action, _ = policy.step(states[robot_index])
@@ -129,7 +137,7 @@ def main(args):
     if not eval_dir.exists():
         eval_dir.mkdir(parents=True, exist_ok=True)
 
-    eval_path = eval_dir / '{}.npy'.format(cfg.run_name)
+    eval_path = eval_dir / '{} {}.npy'.format(cfg.run_name, time.time())
     data = _run_eval(cfg, num_episodes=200)
     print('saved eval to', eval_path)
     np.save(eval_path, data)

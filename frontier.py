@@ -30,7 +30,8 @@ def find_frontier(map, config_space, pixels_per_chunk=150, display=True):
             dist += math.hypot(contour[i+1][0][1] - contour[i][0][1],
                                contour[i+1][0][0] - contour[i][0][0])
             if dist > pixels_per_chunk:
-                sample = num // 2
+                # Rnadom sample to prevent stuck
+                sample = random.betavariate(15, 15) * num
                 frontier_list.append((contour[i - sample][0][1],
                                        contour[i - sample][0][0]))
                 if display:

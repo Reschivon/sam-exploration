@@ -345,7 +345,7 @@ class Environment:
             diff_dist = np.hypot(diff[0], diff[1])
             diff_norm = diff[0] / diff_dist, diff[1] / diff_dist
             robot_target_end_effector_position = [
-                pose_m[0] + diff_norm[0] * 1.5, pose_m[1] + diff_norm[1] * 1.5, 0
+                pose_m[0] + diff_norm[0] * 0.3, pose_m[1] + diff_norm[1] * 0.3, 0
             ]
 
         # Do not allow going outside the room
