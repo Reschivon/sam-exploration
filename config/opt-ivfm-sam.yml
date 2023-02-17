@@ -45,3 +45,4 @@ use_shortest_path_partial_rewards: true
 use_steering_commands: false
 use_opt_rule: 2
 weight_decay: 0.0001
+mask_invalid_action: False
