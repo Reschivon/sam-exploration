@@ -25,7 +25,7 @@ class result():
             # calculate rer and ce
             this_rer = data['repetitive_exploration_rate'] - 1
             this_ce = float(data['explored_area']) / cmd_count
-            # this_bandwidth = data['bandwidth']
+            this_bandwidth = data['bandwidth']
             this_coverage = data['ratio_explored']
             this_overlap = data['overlapped_ratio']
 
@@ -47,7 +47,7 @@ class result():
             self.cmd_list.append(cmd_count)
 
             # BANDWIDTH
-            # self.bandwidth_list.append(this_bandwidth)
+            self.bandwidth_list.append(this_bandwidth)
 
             #COVERAGE
             self.coverage_list.append(this_coverage)
@@ -87,8 +87,8 @@ class result():
         print('Overlap Ratio:')
         print_array(self.np_overlap_list)
 
-        # print('    Bandwidth:')
-        # print_array(self.np_bandwidth_list)
+        print('    Bandwidth:')
+        print_array(self.np_bandwidth_list)
 
         print('Coverage:') 
         # only the last
