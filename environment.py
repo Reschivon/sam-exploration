@@ -127,7 +127,7 @@ class Environment:
         self.show_state_representation = show_state_representation
         self.show_occupancy_map = show_occupancy_map
 
-        pprint.PrettyPrinter(indent=4).pprint(self.__dict__)
+        # pprint.PrettyPrinter(indent=4).pprint(self.__dict__)
 
         ################################################################################
         # Room and objects
@@ -197,6 +197,7 @@ class Environment:
 
         self.global_overhead_map = None
         self.global_visit_freq_map = None
+        self.multi_visit_map = None
         self.step_exploration = None
         self.configuration_space = None
         self.configuration_space_thin = None
@@ -263,6 +264,7 @@ class Environment:
         self.global_overhead_map = self._create_padded_room_zeros()
         self.occupancy_map = self._create_padded_room_zeros()
         self.global_visit_freq_map = self._create_padded_room_zeros()
+        self.multi_visit_map = self._create_padded_room_zeros_int()
         self.step_exploration = self._create_padded_room_zeros()
         if self.show_occupancy_map:
             self.free_space_map = self._create_padded_room_zeros()
@@ -502,7 +504,7 @@ class Environment:
         if self.show_occupancy_map:
             self._update_occupancy_map_visualization(robot_waypoint_positions, robot_target_end_effector_position)
         
-        self._update_vfm_state()
+        self._update_vfm_state(robot_index)
 
         ################################################################################
         # Compute stats
@@ -543,6 +545,19 @@ class Environment:
         binary_old_exploration = binary_this_exploration - binary_new_exploration
         old_exp_penalty_scale = 1 * binary_old_exploration * current_exploration       
  
+        # Repeated exploration ratio:
+        explored = self.multi_visit_map != 0
+        overlapped = self.multi_visit_map == -1
+        non_overlapped = self.multi_visit_map > 0
+
+        explored_sum = explored.sum()
+        if explored_sum != 0:
+            overlapped_ratio = overlapped.sum() / explored_sum
+            non_overlapped_ratio = non_overlapped.sum() / explored_sum
+        else:
+            overlapped_ratio = 0
+            non_overlapped_ratio = 0
+
         # OPT-SAM 0: rules of icra 2021 work
         if self.use_opt_rule == 0:
             new_exp_reward = binary_new_exploration.sum()
@@ -583,6 +598,8 @@ class Environment:
             'cumulative_distance': self.robot_cumulative_distance,
             'cumulative_reward': self.robot_cumulative_reward,
             'explored_area': explored_area,
+            'overlapped_ratio': overlapped_ratio,
+            'non_overlapped_ratio': non_overlapped_ratio,
             'repetive_exploration_rate': repetitive_exploration_rate,
             'ratio_explored': ratio_explored,
             'euclidean_state': state_info['euclidean_state']
@@ -901,6 +918,9 @@ class Environment:
             #     self.sr_plt.gcf().colorbar(colors, ax=ax5)
             #     ax5.axis('off')
 
+            if not self.show_state_representation:
+                return
+
             ax1 = self.sr_subplots[plot_start_index + 0]
             colors = ax1.imshow(state[:,:,0])
             # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
@@ -946,6 +966,12 @@ class Environment:
             int(2 * np.ceil((self.room_width * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2)),  # Ensure even
             int(2 * np.ceil((self.room_length * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2))
         ), dtype=np.float32)
+    
+    def _create_padded_room_zeros_int(self):
+        return np.zeros((
+            int(2 * np.ceil((self.room_width * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2)),  # Ensure even
+            int(2 * np.ceil((self.room_length * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2))
+        ), dtype=int)
 
     def _create_local_position_map(self):
         local_position_map_x = np.zeros((LOCAL_MAP_PIXEL_WIDTH, LOCAL_MAP_PIXEL_WIDTH), dtype=np.float32)
@@ -1034,8 +1060,21 @@ class Environment:
             
         return points, seg, seg_visit, cube_found
 
-    def _update_vfm_state(self):
+    def _update_vfm_state(self, robot_index):
+        robot_index += 1
+
         self.global_visit_freq_map += self.step_exploration
+        # If the multi_visit_map is unexplored, then claim
+        # If the multi_visit_map has already been claimed, then set to -1 (overlap)
+        recent_explored = self.step_exploration > 0
+        unexplored = self.multi_visit_map == 0
+        explored_by_others = np.logical_and(self.multi_visit_map > 0, self.multi_visit_map != robot_index) 
+        self.multi_visit_map[unexplored & recent_explored] = robot_index
+        self.multi_visit_map[explored_by_others & recent_explored] = -1
+
+        # plt.imshow(self.multi_visit_map)
+        # plt.pause(0.1)
+
         self.step_exploration = self._create_padded_room_zeros()
 
     def _update_state(self, robot_index):

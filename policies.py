@@ -64,6 +64,6 @@ class DenseActionSpacePolicy(DQNPolicy):
 
 class DeepLabPolicy(DQNPolicy):
     def build_network(self):
-       return models.deeplabv3_resnet50(num_input_channels=self.cfg.num_input_channels).to(self.device)
+       return models.deeplabv3_resnet18(num_input_channels=self.cfg.num_input_channels).to(self.device)
 
         # return models.DenseActionSpaceDQN(num_input_channels=self.cfg.num_input_channels).to(self.device)

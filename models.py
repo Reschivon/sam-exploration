@@ -33,7 +33,7 @@ class DenseActionSpaceDQN(Module):
         return self.conv3(x)
 
 # From https://github.com/pytorch/vision/blob/main/torchvision/models/segmentation/deeplabv3.py
-def deeplabv3_resnet50(
+def deeplabv3_resnet18(
     *,
     weights = None,
     progress: bool = True,
@@ -42,7 +42,7 @@ def deeplabv3_resnet50(
     num_input_channels=3,
     **kwargs: Any,
 ) -> DeepLabV3:
-    """Constructs a DeepLabV3 model with a ResNet-50 backbone.
+    """Constructs a DeepLabV3 model with a ResNet-18 backbone.
     .. betastatus:: segmentation module
     Reference: `Rethinking Atrous Convolution for Semantic Image Segmentation <https://arxiv.org/abs/1706.05587>`__.
     Args:

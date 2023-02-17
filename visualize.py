@@ -1,124 +1,129 @@
-from importlib.resources import path
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
-_seed = 9
+_eps = 200
 
 #####################################################################
 # Defination of class
 
 class result():
-    def __init__(self, pathname, name):
-        self.path = pathname
+    def __init__(self, path):
         self.file = np.load(self.path, allow_pickle=True).squeeze()
-        self.name = name
-        
-        self.rer, self.ce, self.pe, self.fail, self.cmd = 0, 0, 0, 0, 0
-        self.rer_lst, self.ce_lst, self.pe_lst, self.cmd_1st = [], [], [], []
+        self.eps = _eps
+        self.pass_eps = _eps
+        this_rer, this_ce, this_pe = 0, 0, 0
+        self.rer, self.ce, self.pe, self.fail = 0, 0, 0, 0
+        self.rer_list, self.ce_list, self.pe_list, self.cmd_list, self.bandwidth_list, self.coverage_list = [], [], [], [], [], []
 
-        self.eps = len(self.file)
-        self.pass_eps = self.eps
-
-        for i in range(self.eps):
+        for i in range(_eps):
+            cmd_count = 0
             bf = self.file[i]
-            dat = bf[-1]
-
-            # calculate rer and ce
+            data = bf[-1]
             cmd_count = len(bf)
-            this_rer = dat['repetitive_exploration_rate'] - 1
-            this_ce = float(dat['explored_area']) / cmd_count
+            # calculate rer and ce
+            this_rer = data['repetitive_exploration_rate'] - 1
+            this_ce = float(data['explored_area']) / cmd_count
+            this_bandwidth = data['bandwidth']
+            this_coverage = data['ratio_explored']
 
-            self.rer_lst.append(this_rer)
-            self.ce_lst.append(this_ce)
-            self.cmd_1st.append(cmd_count)
+            self.rer += this_rer
+            self.ce += this_ce
 
-            # calculate pe
-            if dat['cumulative_distance'] >= 1:
-                this_pe = float(dat['explored_area']) / dat['cumulative_distance']
+            # RER
+            self.rer_list.append(this_rer)
+            # CE
+            self.ce_list.append(this_ce)
+            # PE
+            if data['cumulative_distance'] >= 1:
+                this_pe = float(data['explored_area']) / data['cumulative_distance']
                 self.pe += this_pe
-                self.pe_lst.append(this_pe)
+                self.pe_list.append(this_pe)
             else:
-                self.pe_lst.append(0.0)
+                self.pe_list.append(0.0)
+            # CMD
+            self.cmd_list.append(cmd_count)
+
+            # BANDWIDTH
+            self.bandwidth_list.append(this_bandwidth)
+
+            #COVERAGE
+            self.coverage_list.append(this_coverage)
+
+
             # calculate fail rate
-            if dat['cube_found'] == False:
+            if data['cube_found'] == False:
                 self.fail += 1
             
-            self.np_rer_lst = np.asarray(self.rer_lst)
-            self.np_ce_lst = np.asarray(self.ce_lst)
-            self.np_pe_lst = np.asarray(self.pe_lst)
-            self.np_cmd_1st = np.asarray(self.cmd_1st)
-
+            self.np_rer_list = np.asarray(self.rer_list)
+            self.np_ce_list = np.asarray(self.ce_list)
+            self.np_pe_list = np.asarray(self.pe_list)
+            self.np_cmd_list = np.asarray(self.cmd_list)
+            self.np_bandwidth_list = np.asarray(self.bandwidth_list)
+            self.np_coverage_list = np.asarray(self.coverage_list)
+    
     def print_stats(self):
-        print(self.name)
-        print('    rer:', self.rer / self.pass_eps, ' std:', np.std(self.np_rer_lst))
-        print('    ce:', self.ce / self.pass_eps, ' std:', np.std(self.np_ce_lst))
-        print('    pe:', self.pe / len(self.pe_lst), ' std:', np.std(self.np_pe_lst))
+        def print_array(arr):
+            print(np.mean(arr), 'std:', np.std(arr))
+
+        print('    RER:')
+        print_array(self.np_rer_list)
+
+        print('    CE:')
+        print_array(self.np_ce_list)
+
+        print('    PE:')
+        print_array(self.np_pe_list)
+
+        print('    Commands:')
+        print_array(self.np_cmd_list)
+
+        print('    Bandwidth:')
+        print_array(self.np_bandwidth_list)
+
+        print('    Coverage:') 
+        print_array(self.np_coverage_list)
+
         print('    not_found:', self.fail)
 
-def visualize(pathname):
-    #####################################################################
-    # Create results
+#####################################################################
+# Create results
+def visualize(eval_path):
+    res = result(eval_path)
+    res.print_stats()
 
-    result_list = []
-    # result_list.append(result("SAM"))
-    # result_list.append(result("ST-COM"))
-    # result_list.append(result("SAM-VFM (A)"))
-    # result_list.append(result("SAM-VFM (B)"))
-    # result_list.append(result("RAND"))
-    res = result(pathname, '2 Agent')
-    result_list.append(res)
+#####################################################################
+# Make the plot
 
-    for res in result_list:
-        res.print_stats()
+# # color list
+# color_list = ['b-', 'g-', 'r-', 'y-', 'co', 'mo']
 
-    #####################################################################
-    # Make the plot
+# # create x axis
+# x_axis = range(_eps)
+# fig, axs = plt.subplots(3, 1)
 
-    # color list
-    color_list = ['b-', 'g-', 'r-', 'y-', 'co', 'mo']
+# # Upper image
+# for i in range(len(result_list)):
+#     res = result_list[i]
+#     axs[0].plot(x_axis, res.np_rer_lst, color_list[i], label=res.name)
+# axs[0].set(ylabel = 'GRER')
+# axs[0].set_title('The GRERs of SAM-VFM, SAM, and ST-COM over 200 Testing Episodes')
+# axs[0].legend()
 
-    # create x axis
-    x_axis = range(res.eps)
-    fig, axs = plt.subplots(4, 1)
+# # Lower image
+# for i in range(len(result_list)):
+#     res = result_list[i]
+#     axs[1].plot(x_axis, res.np_ce_lst, color_list[i], label=res.name)
+# axs[1].set(ylabel = 'CE')
+# axs[1].set_title('The GEs of SAM-VFM, SAM, and ST-COM over 200 Testing Episodes')
+# #axs[1].legend()
 
-    # Upper image
-    for i in range(len(result_list)):
-        res = result_list[i]
-        axs[0].plot(x_axis, np.sort(res.np_rer_lst), color_list[i], label=res.name)
-    axs[0].set(ylabel = 'GRER')
-    axs[0].set_title(f'The GRER over {res.eps} Testing Episodes for one agent')
-    axs[0].legend()
+# # Lower image
+# for i in range(len(result_list)):
+#     res = result_list[i]
+#     axs[2].plot(x_axis, res.np_pe_lst, color_list[i], label=res.name)
+# axs[2].set(xlabel='episodes', ylabel = 'PE')
+# axs[2].set_title('The PEs of SAM-VFM, SAM, and ST-COM over 200 Testing Episodes')
+# #axs[2].legend()
 
-    # Lower image
-    for i in range(len(result_list)):
-        res = result_list[i]
-        axs[1].plot(x_axis, np.sort(res.np_ce_lst), color_list[i], label=res.name)
-    axs[1].set(ylabel = 'CE')
-    axs[1].set_title(f'The GEs over {res.eps} Testing Episodes for one agent')
-    #axs[1].legend()
-
-    # Lower image
-    for i in range(len(result_list)):
-        res = result_list[i]
-        axs[2].plot(x_axis, np.sort(res.np_pe_lst), color_list[i], label=res.name)
-    axs[2].set(xlabel='episodes', ylabel = 'PE')
-    axs[2].set_title(f'The PEs over {res.eps} Testing Episodes for one agent')
-    #axs[2].legend()
-
-    for i in range(len(result_list)):
-        res = result_list[i]
-        axs[3].plot(x_axis, np.sort(res.np_cmd_1st), color_list[i], label=res.name)
-    axs[3].set(xlabel='episodes', ylabel = 'Cmds')
-    axs[3].set_title(f'The Cmds over {res.eps} Testing Episodes for one agent')
-
-    print(f"GRER avg: {np.mean(res.np_rer_lst)}, " +
-        f"CE avg {np.mean(res.np_ce_lst)}, " +
-        f"PE avg: {np.mean(res.np_pe_lst)} "
-        f"CMD avg: {np.mean(res.np_cmd_1st)}"
-        )
-
-    plt.show()
-
-if __name__ == '__main__':
-    visualize(sys.argv[1])
+plt.show()

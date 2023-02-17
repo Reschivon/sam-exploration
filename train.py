@@ -1,5 +1,6 @@
 # Adapted from https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 import argparse
+import pprint
 import random
 import sys
 import time
@@ -112,7 +113,9 @@ def train_teacher_student(cfg, policy_net, teacher, optimizer, batch, transform_
 
     return train_info
 
-def main(cfg):    
+def main(cfg):  
+
+    pprint.PrettyPrinter(indent=4).pprint(cfg.__dict__) 
 
     # Set up logging and checkpointing
     log_dir = Path(cfg.log_dir)
@@ -197,7 +200,7 @@ def main(cfg):
                 action = env.action_to_hyp_action(action, env.hyperbolic_zoom)
             else:
                 action, _ = policy.step(states[robot_index], exploration_eps=exploration_eps, 
-                        mask_invalid=cfg.state_type=='hyperbolic')
+                        mask_invalid=cfg.mask_invalid_action)
 
             # Step the simulation
             next_state, curr_reward, curr_done, info = env.step(action, robot_index)

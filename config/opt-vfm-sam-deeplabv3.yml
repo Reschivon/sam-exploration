@@ -45,3 +45,4 @@ use_opt_rule: 2
 weight_decay: 0.0001
 
 state_type: vfm
+mask_invalid_action: True

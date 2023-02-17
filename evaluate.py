@@ -37,6 +37,9 @@ def _run_eval(cfg, num_episodes=40):
         data[episode_count].append({'cube_found': info['cube_found'],\
                                     'cumulative_distance': info['cumulative_distance'],\
                                     'explored_area': info['explored_area'],\
+                                    'overlapped_ratio': info['overlapped_ratio'],\
+                                    'non_overlapped_ratio': info['non_overlapped_ratio'],\
+                                    'ratio_explored': info['ratio_explored'],\
                                     'repetitive_exploration_rate': info['repetive_exploration_rate']})
         
         time_elasped = end_time - start_time
@@ -94,7 +97,7 @@ def main(args):
         eval_dir.mkdir(parents=True, exist_ok=True)
 
     eval_path = eval_dir / '{}.npy'.format(cfg.run_name)
-    data = _run_eval(cfg, num_episodes=8)
+    data = _run_eval(cfg, num_episodes=200)
     np.save(eval_path, data)
     print(eval_path)
 

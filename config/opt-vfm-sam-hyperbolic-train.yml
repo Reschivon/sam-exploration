@@ -44,7 +44,7 @@ use_steering_commands: false
 use_visit_frequency_channel: true
 weight_decay: 0.0001
 
-hyperbolic_zoom: 2
-checkpoint_path: checkpoints/20221210T152231343245-large_columns_vfm_hyperbolic/checkpoint_00003000.pth.tar
-model_path: checkpoints/20221210T152231343245-large_columns_vfm_hyperbolic/model_00003000.pth.tar
+hyperbolic_zoom: 3
+checkpoint_path: checkpoints/20221211T173207194045-large_columns_vfm_hyperbolic/checkpoint_00001000.pth.tar
+model_path: checkpoints/20221211T173207194045-large_columns_vfm_hyperbolic/model_00001000.pth.tar
 
