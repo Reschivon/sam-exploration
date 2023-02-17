@@ -3,7 +3,7 @@ checkpoint_dir: checkpoints/20210202T070652911253-large_columns
 checkpoint_freq: 3000
 checkpoint_path: checkpoints/20210202T070652911253-large_columns/checkpoint_00036000.pth.tar
 checkpoints_dir: checkpoints
-collision_penalty: 15000
+collision_penalty: 10
 discount_factor: 0.99
 experiment_name: large_columns
 exploration_reward: 1
@@ -18,7 +18,7 @@ log_dir: logs/20210202T070652911253-large_columns
 logs_dir: logs
 ministep_size: 0.25
 model_path: checkpoints/20210202T070652911253-large_columns/model_00036000.pth.tar
-nonmovement_penalty: 15000
+nonmovement_penalty: 10
 num_cubes: 1
 num_input_channels: 4
 obstacle_config: large_columns
@@ -29,7 +29,7 @@ random_seed: null
 replay_buffer_size: 6000
 room_length: 3.0
 room_width: 3.0
-run_name: 20210202T070652911253-large_columns
+run_name: benchmark-with-original-vfm-model
 shortest_path_channel_scale: 0.25
 steering_commands_num_turns: 4
 target_update_freq: 1000

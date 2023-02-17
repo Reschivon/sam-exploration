@@ -1,0 +1,23 @@
+# Creates a new container from the dockerimage "ivfm" with GPU acceleration and network connection.
+
+# Mounts $PWD to /sam-exploration on the docker machine. IVFM cannot be cloned in docker because the repository is private.
+
+# Define Docker volumes and environment variables
+DOCKER_VOLUMES="
+--volume="$PWD/sam-exploration:/sam-exploration" \
+--volume="$HOME/.Xauthority:$HOME/.Xauthority" \
+--volume="/tmp/.X11-unix:/tmp/.X11-unix" \
+"
+
+# Must pass privileged flag so docker can find gpus without needing them explicitly defined
+DOCKER_ENV_VARS="
+--env="NVIDIA_DRIVER_CAPABILITIES=all" \
+--env="DISPLAY" \
+--env="QT_X11_NO_MITSHM=1" \
+--gpus all \
+--privileged \
+"
+
+DOCKER_ARGS=${DOCKER_VOLUMES}" "${DOCKER_ENV_VARS}
+
+docker run -it --net=host $DOCKER_ARGS ivfm bash

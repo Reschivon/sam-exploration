@@ -20,6 +20,7 @@ def read_config(config_path):
     return cfg
 
 def write_config(cfg, config_path):
+    print("Writing config to", config_path)
     with open(config_path, 'w') as f:
         f.write(cfg.toYAML())
 
@@ -84,19 +85,37 @@ def get_env_from_cfg(cfg, physical_env=False, **kwargs):
         'use_shortest_path_movement', 'fixed_step_size', 'use_steering_commands', 'steering_commands_num_turns',
         'ministep_size', 'inactivity_cutoff', 'random_seed', 'use_opt_rule',
     ]
+    optional_kwarg_list = [
+        'state_type', 'num_agents', 'show_state_representation', 'use_gui', 'show_occupancy_map', 'step_limit',
+        'theoretical_exploration', 'hyperbolic_zoom'
+    ]
     original_kwargs = {}
     for kwarg_name in kwarg_list:
         original_kwargs[kwarg_name] = cfg[kwarg_name]
     original_kwargs.update(kwargs)
+
+    for key in optional_kwarg_list:
+        if key in cfg:
+            original_kwargs[key] = cfg[key]
+            
     if physical_env:
         return environment.RealEnvironment(**original_kwargs)
     return environment.Environment(**original_kwargs)
 
-def get_policy_from_cfg(cfg, action_space, **kwargs):
+def get_policy_from_cfg(cfg, action_space, static_model_path=None, **kwargs):
+    cfg = cfg.copy()
+
+    if static_model_path is not None:
+        kwargs['train'] = True
+        cfg.checkpoint_path = 'exists'
+        cfg.model_path = static_model_path
+
     if cfg.policy_type == 'steering_commands':
         return policies.SteeringCommandsPolicy(cfg, action_space, **kwargs)
     if cfg.policy_type == 'dense_action_space':
         return policies.DenseActionSpacePolicy(cfg, action_space, **kwargs)
+    if cfg.policy_type == 'deeplab':
+        return policies.DeepLabPolicy(cfg, action_space, **kwargs)
     raise Exception
 
 ################################################################################
@@ -111,6 +130,8 @@ def to_uint8_image(image):
     return np.round(255.0 * image).astype(np.uint8)
 
 def get_state_visualization(state):
+    if state.shape[2] == 1:
+        return np.stack([state[:, :, 0], state[:, :, 0], state[:, :, 0]], axis=2)  # (robot_state_channel, overhead_map, overhead_map)
     if state.shape[2] == 2:
         return np.stack([state[:, :, 1], state[:, :, 0], state[:, :, 0]], axis=2)  # (robot_state_channel, overhead_map, overhead_map)
     return np.stack([state[:, :, 1], state[:, :, 0], state[:, :, -1]], axis=2)  # (robot_state_channel, overhead_map, distance_channel)

@@ -7,22 +7,27 @@ inline int ravel(int i, int j, int num_cols) {
     return i * num_cols + j;
 }
 
-py::tuple spfa(py::array_t<bool> input_map, std::tuple<int, int> source) {
+py::tuple spfa_dense_source(py::array_t<bool> input_map, py::array_t<bool> source) {
+    // Input and source maps must be equivalently sized 
+    py::buffer_info map_buf = input_map.request();
+    int num_rows = map_buf.shape[0];
+    int num_cols = map_buf.shape[1];
+    bool* map_ptr = (bool *) map_buf.ptr;
+
+    py::buffer_info source_buf = source.request();
+    int source_rows = source_buf.shape[0];
+    int source_cols = source_buf.shape[1];
+    bool* source_ptr = (bool *) source_buf.ptr;
+
+    if (num_rows != source_rows || num_cols != source_cols)
+        throw std::invalid_argument("'input_map' and 'source' must share same shape");
+
     const float eps = 1e-6;
     const int num_dirs = 8;
     const int dirs[num_dirs][2] = {{-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}};
     const float dir_lengths[num_dirs] = {std::sqrt(2.0f), 1, std::sqrt(2.0f), 1, std::sqrt(2.0f), 1, std::sqrt(2.0f), 1};
 
     // Process input map
-    py::buffer_info map_buf = input_map.request();
-    int num_rows = map_buf.shape[0];
-    int num_cols = map_buf.shape[1];
-    bool* map_ptr = (bool *) map_buf.ptr;
-
-    // Get source coordinates
-    int source_i = std::get<0>(source);
-    int source_j = std::get<1>(source);
-
     int max_num_verts = num_rows * num_cols;
     int max_edges_per_vert = num_dirs;
     const float inf = 2 * max_num_verts;
@@ -62,12 +67,21 @@ py::tuple spfa(py::array_t<bool> input_map, std::tuple<int, int> source) {
         }
     }
 
-    // SPFA
-    int s = ravel(source_i, source_j, num_cols);
     int head = 0, tail = 0;
-    dists[s] = 0;
-    queue[++tail] = s;
-    in_queue[s] = true;
+
+    // Copy sources to dist map  
+    for (int i = 0; i < num_rows; ++i) {
+        for (int j = 0; j < num_cols; ++j) {
+            int v = ravel(i, j, num_cols);
+            if (source_ptr[v]) {
+                dists[v] = 0;
+                queue[++tail] = v;
+                in_queue[v] = true;
+            }
+        }
+    }
+
+    // SPFA
     while (head < tail) {
         int u = queue[++head];
         in_queue[u] = false;
@@ -120,8 +134,8 @@ PYBIND11_MODULE(spfa, m) {
         SPFA implemented in C++
     )pbdoc";
 
-    m.def("spfa", &spfa, R"pbdoc(
-        spfa
+    m.def("spfa_dense_source", &spfa_dense_source, R"pbdoc(
+        spfa_dense_source
     )pbdoc");
 
 #ifdef VERSION_INFO

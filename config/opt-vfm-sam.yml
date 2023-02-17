@@ -6,7 +6,7 @@ checkpoints_dir: checkpoints
 collision_penalty: 15000
 exploration_reward: 1
 discount_factor: 0.99
-experiment_name: large_columns
+experiment_name: large_columns_vfm_
 exploration_timesteps: 3000
 final_exploration: 0.1
 fixed_step_size: null
@@ -43,3 +43,5 @@ use_shortest_path_partial_rewards: true
 use_steering_commands: false
 use_opt_rule: 2
 weight_decay: 0.0001
+
+state_type: vfm

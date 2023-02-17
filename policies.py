@@ -3,7 +3,6 @@ import torch
 from torchvision import transforms
 import models
 
-
 class DQNPolicy:
     def __init__(self, cfg, action_space, train=False, random_seed=None):
         self.cfg = cfg
@@ -33,7 +32,7 @@ class DQNPolicy:
     def apply_transform(self, s):
         return self.transform(s).unsqueeze(0)
 
-    def step(self, state, exploration_eps=None, debug=False):
+    def step(self, state, exploration_eps=None, debug=False, mask_invalid=False):
         if exploration_eps is None:
             exploration_eps = self.cfg.final_exploration
         state = self.apply_transform(state).to(self.device)
@@ -42,6 +41,9 @@ class DQNPolicy:
         if random.random() < exploration_eps:
             action = random.randrange(self.action_space)
         else:
+            if mask_invalid:
+                # Make 0 values of SPFA channel (obstacles, out of bounds) ineligible for action selection
+                output[state[:, 3] != 0] = -99999
             action = output.view(1, -1).max(1)[1].item()
         info = {}
         if debug:
@@ -51,11 +53,17 @@ class DQNPolicy:
 class SteeringCommandsPolicy(DQNPolicy):
     def build_network(self):
         return torch.nn.DataParallel(
-            models.SteeringCommandsDQN(num_input_channels=self.cfg.num_input_channels, num_output_channels=self.action_space)
+            models.SteeringCommandsDQN(num_input_channels=self.cfg.num_input_channels, num_output_channels=self.action_space) \
         ).to(self.device)
 
 class DenseActionSpacePolicy(DQNPolicy):
     def build_network(self):
         return torch.nn.DataParallel(
-            models.DenseActionSpaceDQN(num_input_channels=self.cfg.num_input_channels)
+            models.DenseActionSpaceDQN(num_input_channels=self.cfg.num_input_channels) \
         ).to(self.device)
+
+class DeepLabPolicy(DQNPolicy):
+    def build_network(self):
+       return models.deeplabv3_resnet18(num_input_channels=self.cfg.num_input_channels).to(self.device)
+
+        # return models.DenseActionSpaceDQN(num_input_channels=self.cfg.num_input_channels).to(self.device)

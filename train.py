@@ -1,5 +1,6 @@
 # Adapted from https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 import argparse
+import pprint
 import random
 import sys
 import time
@@ -17,7 +18,6 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import utils
-
 
 torch.backends.cudnn.benchmark = True
 
@@ -81,7 +81,42 @@ def train(cfg, policy_net, target_net, optimizer, batch, transform_func):
 
     return train_info
 
-def main(cfg):
+def train_teacher_student(cfg, policy_net, teacher, optimizer, batch, transform_func):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    state_batch = torch.cat([transform_func(s) for s in batch.state]).to(device)  # (32, 3, 96, 96)
+    action_batch = torch.tensor(batch.action, dtype=torch.long).to(device)  # (32,)
+    ministeps_batch = torch.tensor(batch.ministeps, dtype=torch.float32).to(device)  # (32,)
+    non_final_next_states = torch.cat([transform_func(s) for s in batch.next_state if s is not None]).to(device, non_blocking=True)  # (?32, 3, 96, 96)
+
+    output = policy_net(state_batch)  # (32, 2, 96, 96)
+    state_action_values = output.view(cfg.batch_size, -1).gather(1, action_batch.unsqueeze(1)).squeeze(1)  # (32,)
+    expected_state_action_values = torch.zeros(cfg.batch_size, dtype=torch.float32, device=device)  # (32,)
+    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), dtype=torch.bool, device=device)  # (32,)
+
+    expected_state_action_values[non_final_mask] = teacher(non_final_next_states).view(non_final_next_states.size(0), -1).max(1)[0].detach()  # (32,)
+
+    td_error = torch.abs(state_action_values - expected_state_action_values).detach()  # (32,)
+    loss = smooth_l1_loss(state_action_values, expected_state_action_values)
+
+    optimizer.zero_grad()
+    loss.backward()
+    if cfg.grad_norm_clipping is not None:
+        torch.nn.utils.clip_grad_norm_(policy_net.parameters(), cfg.grad_norm_clipping)
+    optimizer.step()
+
+    train_info = {}
+    train_info['q_value_min'] = output.min().item()
+    train_info['q_value_max'] = output.max().item()
+    train_info['td_error'] = td_error.mean()
+    train_info['loss'] = loss
+
+    return train_info
+
+def main(cfg):  
+
+    pprint.PrettyPrinter(indent=4).pprint(cfg.__dict__) 
+
     # Set up logging and checkpointing
     log_dir = Path(cfg.log_dir)
     checkpoint_dir = Path(cfg.checkpoint_dir)
@@ -91,9 +126,19 @@ def main(cfg):
     # Create environment
     kwargs = {}
     kwargs['use_gui'] = False
+    kwargs['show_state_representation'] = False
+    kwargs['show_occupancy_map'] = False
+
     if sys.platform == 'darwin':
         kwargs['use_gui'] = True
+
     env = utils.get_env_from_cfg(cfg, **kwargs)
+
+    if hasattr(cfg, 'teacher_net_path'):
+        teacher = utils.get_policy_from_cfg(cfg, env.get_action_space(), static_model_path=cfg.teacher_net_path)
+        use_teacher_net = True
+    else:
+        use_teacher_net = False
 
     # Policy
     policy = utils.get_policy_from_cfg(cfg, env.get_action_space(), train=True)
@@ -125,39 +170,64 @@ def main(cfg):
     visualization_summary_writer = SummaryWriter(log_dir=str(log_dir / 'visualization'))
     meters = Meters()
 
-    state = env.reset()
+    states, state_infos = [], []
+    for robot_index in range(env.num_agents):
+        state, state_info = env.reset(robot_index)
+        states.append(state)
+        state_infos.append(state_info)
+
+    done = False
+
     total_timesteps_with_warm_up = cfg.learning_starts + cfg.total_timesteps
     
+    #for timestep in range(start_timestep, total_timesteps_with_warm_up):
     for timestep in tqdm(range(start_timestep, total_timesteps_with_warm_up),
                          initial=start_timestep, total=total_timesteps_with_warm_up, file=sys.stdout):
 
-    #for timestep in range(start_timestep, total_timesteps_with_warm_up):
         start_time = time.time()
 
-        # Select an action
-        if cfg.exploration_timesteps > 0:
-            exploration_eps = 1 - min(max(timestep - cfg.learning_starts, 0) / cfg.exploration_timesteps, 1) * (1 - cfg.final_exploration)
-        else:
-            exploration_eps = cfg.final_exploration
-        action, _ = policy.step(state, exploration_eps=exploration_eps)
+        for robot_index in range(env.num_agents):
+            # Select an action
+            if cfg.exploration_timesteps > 0:
+                exploration_eps = 1 - min(max(timestep - cfg.learning_starts, 0) / cfg.exploration_timesteps, 1) * (1 - cfg.final_exploration)
+            else:
+                exploration_eps = cfg.final_exploration
 
-        # Step the simulation
-        next_state, reward, done, info = env.step(action)
-        ministeps = info['ministeps']
+            if use_teacher_net:
+                # Teacher should be trained on euc states
+                action, _ = teacher.step(state_infos[robot_index]['euclidean_state'], exploration_eps=0)            
+                # since action is in euc, convert to hyp first
+                action = env.action_to_hyp_action(action, env.hyperbolic_zoom)
+            else:
+                action, _ = policy.step(states[robot_index], exploration_eps=exploration_eps, 
+                        mask_invalid=cfg.mask_invalid_action)
 
-        # Store in buffer
-        replay_buffer.push(state, action, reward, ministeps, next_state)
-        state = next_state
+            # Step the simulation
+            next_state, curr_reward, curr_done, info = env.step(action, robot_index)
+            ministeps = info['ministeps']
 
-        # Reset if episode ended
-        if done:
-            state = env.reset()
-            episode += 1
+            # Store in buffer
+            replay_buffer.push(states[robot_index], action, curr_reward, ministeps, next_state)
+            states[robot_index] = next_state
+            state_infos[robot_index] = info
+
+            # Reset if episode ended
+            if curr_done:
+                done = True
+                states, state_infos = [], []
+                for robot_index in range(env.num_agents):
+                    state, state_info = env.reset(robot_index)
+                    states.append(state)
+                    state_infos.append(state_info)
+                episode += 1
 
         # Train network
         if timestep >= cfg.learning_starts:
             batch = replay_buffer.sample(cfg.batch_size)
-            train_info = train(cfg, policy.policy_net, target_net, optimizer, batch, policy.apply_transform)
+            if use_teacher_net:
+                train_info = train_teacher_student(cfg, policy.policy_net, teacher.policy_net, optimizer, batch, policy.apply_transform)
+            else:
+                train_info = train(cfg, policy.policy_net, target_net, optimizer, batch, policy.apply_transform)
 
         # Update target network
         if (timestep + 1) % cfg.target_update_freq == 0:
@@ -270,7 +340,8 @@ class Meters:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('config_path')
+    parser.add_argument('--config-path')
     config_path = parser.parse_args().config_path
+    print("Config path", config_path)
     config_path = utils.setup_run(config_path)
     main(utils.read_config(config_path))

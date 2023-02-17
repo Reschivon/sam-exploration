@@ -1,2 +1,5 @@
-checkpoint_*
+checkpoints/*
+eval/*
+logs/*
 __pycache__/
+

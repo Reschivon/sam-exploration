@@ -1,3 +1,4 @@
+from locale import normalize
 import pprint
 import tempfile
 from pathlib import Path
@@ -12,12 +13,9 @@ from skimage.draw import line
 from skimage.measure import approximate_polygon
 from skimage.morphology import binary_dilation
 from skimage.morphology.selem import disk
-import cv2
-import time
 import matplotlib.pyplot as plt  # pylint: disable=import-outside-toplevel
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import spfa
-
 
 # Room, walls, and objects
 GLOBAL_SCALING = 0.1
@@ -41,7 +39,6 @@ NOT_MOVING_THRESHOLD = 0.0005  # 0.5 mm
 NOT_TURNING_THRESHOLD = np.radians(1)  # 1 degree
 NONMOVEMENT_DIST_THRESHOLD = 0.005
 NONMOVEMENT_TURN_THRESHOLD = np.radians(1)
-STEP_LIMIT = 800
 
 # Camera
 CAMERA_HEIGHT = ROBOT_HEIGHT
@@ -49,11 +46,13 @@ CAMERA_PITCH = -30
 CAMERA_FOV = 60
 CAMERA_NEAR = 0.01
 CAMERA_FAR = 0.25
+
+
 FLOOR_SEG_INDEX = 1
 OBSTACLE_SEG_INDEX = 2
 RECEPTACLE_SEG_INDEX = 3
 CUBE_SEG_INDEX = 4
-ROBOT_SEG_INDEX = 5
+ROBOT_SEG_INDEX_FIRST = 5
 MAX_SEG_INDEX = 8
 
 # Overhead map
@@ -62,34 +61,48 @@ LOCAL_MAP_WIDTH = 1  # 1 meter
 LOCAL_MAP_PIXELS_PER_METER = LOCAL_MAP_PIXEL_WIDTH / LOCAL_MAP_WIDTH
 MAP_UPDATE_STEPS = 60
 
+# Pointwise source SPFA
+def spfa_pointwise(input_map, source_point):
+    source = np.full(input_map.shape, False)
+    source[source_point[0], source_point[1]] = True
+    return spfa.spfa_dense_source(input_map, source)
+
 class Environment:
     def __init__(
         # pylint: disable=bad-continuation
         # This comment is here to make code folding work
-            self, room_length=1.0, room_width=0.5, num_cubes=10, obstacle_config='small_empty',
-            use_visit_frequency_channel=True, use_shortest_path_channel=False, shortest_path_channel_scale=0.25,
+            self, room_length=1.0, room_width=0.5, num_cubes=10, theoretical_exploration=False, obstacle_config='small_empty',
+            use_visit_frequency_channel=True, state_type='vfm', use_shortest_path_channel=False, shortest_path_channel_scale=0.25,
             use_position_channel=False, position_channel_scale=0.25, partial_rewards_scale=2.0, 
-            use_shortest_path_partial_rewards=False, exploration_reward = 1, collision_penalty=1, nonmovement_penalty=1,
+            use_shortest_path_partial_rewards=False, exploration_reward=1, collision_penalty=1, nonmovement_penalty=1,
             use_shortest_path_movement=False, fixed_step_size=None, use_steering_commands=False, steering_commands_num_turns=4,
+            step_limit = 800, hyperbolic_zoom=2,
+            num_agents=1,
             ministep_size=0.25, inactivity_cutoff=100, random_seed=None,
-            use_gui=False, show_debug_annotations=False, show_occupancy_map=True, use_opt_rule=0,
+            use_gui=False, show_debug_annotations=False, show_occupancy_map=False, show_state_representation=False, use_opt_rule=0,
         ):
         ################################################################################
         # Store arguments
-
+       
         # Room config
         self.room_length = room_length
         self.room_width = room_width
         self.num_cubes = num_cubes
         self.obstacle_config = obstacle_config
+        self.theoretical_exploration = theoretical_exploration
+
+        # Number of agents
+        self.num_agents = num_agents
 
         # State representation
         self.use_shortest_path_channel = use_shortest_path_channel
         self.use_visit_frequency_channel = use_visit_frequency_channel
+        self.state_type = state_type # Overrides use_visit_frequency_channel
         self.shortest_path_channel_scale = shortest_path_channel_scale
         self.use_position_channel = use_position_channel
         self.use_opt_rule = use_opt_rule
         self.position_channel_scale = position_channel_scale
+        self.hyperbolic_zoom = hyperbolic_zoom
 
         # Rewards
         self.exploration_reward = exploration_reward
@@ -103,6 +116,7 @@ class Environment:
         self.fixed_step_size = fixed_step_size
         self.use_steering_commands = use_steering_commands
         self.steering_commands_num_turns = steering_commands_num_turns
+        self.step_limit = step_limit * num_agents
 
         # Misc
         self.ministep_size = ministep_size
@@ -110,10 +124,10 @@ class Environment:
         self.random_seed = random_seed
         self.use_gui = use_gui
         self.show_debug_annotations = show_debug_annotations
-        self.show_state_representation = False
+        self.show_state_representation = show_state_representation
         self.show_occupancy_map = show_occupancy_map
 
-        pprint.PrettyPrinter(indent=4).pprint(self.__dict__)
+        # pprint.PrettyPrinter(indent=4).pprint(self.__dict__)
 
         ################################################################################
         # Room and objects
@@ -130,10 +144,11 @@ class Environment:
         self.max_obstacle_id = None
 
         # Robot
-        self.robot_id = None
-        self.robot_cid = None
-        self.robot_position = None
-        self.robot_heading = None
+        self.robot_id = []
+        self.robot_cid = []
+        self.robot_position = []
+        self.robot_heading = []
+        self.debug_images = []
         self.robot_cumulative_distance = None
         self.robot_cumulative_reward = None
 
@@ -149,15 +164,28 @@ class Environment:
         self.camera_image_pixel_width = int(self.camera_aspect * self.camera_image_pixel_height)
         self.projection_matrix = p.computeProjectionMatrixFOV(CAMERA_FOV, self.camera_aspect, CAMERA_NEAR, CAMERA_FAR)
 
+        def draw_circle(robot_pixel_width):
+            robot_state_channel = np.zeros((LOCAL_MAP_PIXEL_WIDTH, LOCAL_MAP_PIXEL_WIDTH), dtype=np.float32)
+            start = int(np.floor(LOCAL_MAP_PIXEL_WIDTH / 2 - robot_pixel_width / 2))
+            for i in range(start, start + robot_pixel_width):
+                for j in range(start, start + robot_pixel_width):
+                    # Circular robot mask
+                    if (((i + 0.5) - LOCAL_MAP_PIXEL_WIDTH / 2)**2 + ((j + 0.5) - LOCAL_MAP_PIXEL_WIDTH / 2)**2)**0.5 < robot_pixel_width / 2:
+                        robot_state_channel[i, j] = 1
+            return robot_state_channel
+
         # Robot state
         robot_pixel_width = int(2 * ROBOT_RADIUS * LOCAL_MAP_PIXELS_PER_METER)
-        self.robot_state_channel = np.zeros((LOCAL_MAP_PIXEL_WIDTH, LOCAL_MAP_PIXEL_WIDTH), dtype=np.float32)
-        start = int(np.floor(LOCAL_MAP_PIXEL_WIDTH / 2 - robot_pixel_width / 2))
-        for i in range(start, start + robot_pixel_width):
-            for j in range(start, start + robot_pixel_width):
-                # Circular robot mask
-                if (((i + 0.5) - LOCAL_MAP_PIXEL_WIDTH / 2)**2 + ((j + 0.5) - LOCAL_MAP_PIXEL_WIDTH / 2)**2)**0.5 < robot_pixel_width / 2:
-                    self.robot_state_channel[i, j] = 1
+
+        self.euc_robot_state_channel = draw_circle(robot_pixel_width)
+
+        if self.state_type == 'hyperbolic':
+            robot_radius_ratio = ROBOT_RADIUS / LOCAL_MAP_WIDTH
+            robot_radius_ratio_projected = (2 * ROBOT_RADIUS) / (1 - ROBOT_RADIUS * ROBOT_RADIUS)
+            projection_ratio = robot_radius_ratio_projected / robot_radius_ratio
+            robot_pixel_width = int(2 * ROBOT_RADIUS * LOCAL_MAP_PIXELS_PER_METER / projection_ratio) 
+
+        self.robot_state_channel = draw_circle(robot_pixel_width)
 
         # Used to mask out the wall pixels when updating occupancy map
         room_mask = self._create_padded_room_zeros()
@@ -169,6 +197,7 @@ class Environment:
 
         self.global_overhead_map = None
         self.global_visit_freq_map = None
+        self.multi_visit_map = None
         self.step_exploration = None
         self.configuration_space = None
         self.configuration_space_thin = None
@@ -176,16 +205,13 @@ class Environment:
         self.occupancy_map = None
 
         if self.show_state_representation:
-            import matplotlib.pyplot as plt
-            self.sr_plt = plt
-            self.sr_plt.figure()
-            self.sr_plt.ion()
+            COLS = 4
+            plt.ion()
+            self.sr_plt, self.sr_subplots = plt.subplots(self.num_agents, COLS, figsize=(20, 4))
 
         if self.show_occupancy_map:
-            import matplotlib.pyplot as plt  # pylint: disable=import-outside-toplevel
-            self.plt = plt
-            self.plt.figure(figsize=(4, 4 * self.room_width / self.room_length))
-            self.plt.ion()
+            self.plt = plt.figure(0, figsize=(9, 9 * self.room_width / self.room_length))
+            plt.ion()
             self.free_space_map = None
 
         # Position channel can be precomputed
@@ -215,7 +241,7 @@ class Environment:
             increment = 360 / self.steering_commands_num_turns
             self.simple_action_space_turn_angles = [np.radians(i * increment) for i in range(self.steering_commands_num_turns)]
 
-    def reset(self):
+    def reset(self, robot_index):
         ################################################################################
         # Room and objects
 
@@ -229,18 +255,24 @@ class Environment:
         self._reset_poses()
         self._step_simulation_until_still()
 
+        if len(self.debug_images) < self.num_agents:
+            self.debug_images = [None for i in range(self.num_agents)]
+
         ################################################################################
         # State representation
 
         self.global_overhead_map = self._create_padded_room_zeros()
         self.occupancy_map = self._create_padded_room_zeros()
         self.global_visit_freq_map = self._create_padded_room_zeros()
+        self.multi_visit_map = self._create_padded_room_zeros_int()
         self.step_exploration = self._create_padded_room_zeros()
         if self.show_occupancy_map:
             self.free_space_map = self._create_padded_room_zeros()
 
-        self.robot_position, self.robot_heading = self._get_robot_pose()
-        self._update_state()
+        for robot_index in range(self.num_agents):
+            self.robot_position[robot_index], self.robot_heading[robot_index] = self._get_robot_pose(robot_index)
+            self._update_state(robot_index)
+
         if self.show_occupancy_map:
             self._update_occupancy_map_visualization()
 
@@ -253,12 +285,13 @@ class Environment:
 
         ################################################################################
 
-        return self.get_state()
+        state, state_info = self.get_state(robot_index)
+        return state, state_info
 
-    def step(self, action):
-        return self._step(action)
+    def step(self, action, robot_index):
+        return self._step(action, robot_index)
 
-    def _step(self, action, dry_run=False):
+    def _step(self, action, robot_index, dry_run=False):
         ################################################################################
         # Setup
 
@@ -266,13 +299,13 @@ class Environment:
         if self.use_steering_commands:
             robot_action = action
         else:
-            robot_action = np.unravel_index(action, (LOCAL_MAP_PIXEL_WIDTH, LOCAL_MAP_PIXEL_WIDTH))
+            robot_action = np.unravel_index(action, (LOCAL_MAP_PIXEL_WIDTH, LOCAL_MAP_PIXEL_WIDTH))            
 
         robot_reward = 0
         robot_hit_obstacle = False
 
         # Initial pose
-        robot_initial_position, robot_initial_heading = self._get_robot_pose()
+        robot_initial_position, robot_initial_heading = self._get_robot_pose(robot_index)
 
         # Compute target end effector position
         if self.use_steering_commands:
@@ -281,8 +314,15 @@ class Environment:
         else:
             # Compute distance from front of robot (not robot center), which is used to find the
             # robot position and heading needed in order to place end effector over specified location.
-            x_movement = -LOCAL_MAP_WIDTH / 2 + float(robot_action[1]) / LOCAL_MAP_PIXELS_PER_METER
-            y_movement = LOCAL_MAP_WIDTH / 2 - float(robot_action[0]) / LOCAL_MAP_PIXELS_PER_METER
+            if self.state_type == 'hyperbolic':
+                x_movement_px = -LOCAL_MAP_PIXEL_WIDTH / 2 + float(robot_action[1])
+                y_movement_px = LOCAL_MAP_PIXEL_WIDTH / 2 - float(robot_action[0])
+                robot_action = self.map_to_euclidean((x_movement_px, y_movement_px))
+                x_movement = robot_action[0] / LOCAL_MAP_PIXELS_PER_METER
+                y_movement = robot_action[1] / LOCAL_MAP_PIXELS_PER_METER
+            else:
+                x_movement = -LOCAL_MAP_WIDTH / 2 + float(robot_action[1]) / LOCAL_MAP_PIXELS_PER_METER
+                y_movement = LOCAL_MAP_WIDTH / 2 - float(robot_action[0]) / LOCAL_MAP_PIXELS_PER_METER
             if self.fixed_step_size is not None:
                 straight_line_dist = self.fixed_step_size + ROBOT_RADIUS
             else:
@@ -354,8 +394,8 @@ class Environment:
         ################################################################################
         # Movement
 
-        self.robot_position = robot_initial_position.copy()
-        self.robot_heading = robot_initial_heading
+        self.robot_position[robot_index] = robot_initial_position.copy()
+        self.robot_heading[robot_index] = robot_initial_heading
         robot_is_moving = True
         robot_distance = 0
         robot_waypoint_index = 1
@@ -370,20 +410,20 @@ class Environment:
                 break
 
             # Store pose to determine distance moved during simulation step
-            robot_prev_position = self.robot_position.copy()
-            robot_prev_heading = self.robot_heading
+            robot_prev_position = self.robot_position[robot_index].copy()
+            robot_prev_heading = self.robot_heading[robot_index]
 
             # Compute robot pose for new constraint
-            robot_new_position = self.robot_position.copy()
-            robot_new_heading = self.robot_heading
-            heading_diff = heading_difference(self.robot_heading, robot_waypoint_heading)
+            robot_new_position = self.robot_position[robot_index].copy()
+            robot_new_heading = self.robot_heading[robot_index]
+            heading_diff = heading_difference(self.robot_heading[robot_index], robot_waypoint_heading)
             if np.abs(heading_diff) > TURN_STEP_SIZE:
                 # Turn towards next waypoint first
                 robot_new_heading += np.sign(heading_diff) * TURN_STEP_SIZE
             else:
-                dx = robot_waypoint_position[0] - self.robot_position[0]
-                dy = robot_waypoint_position[1] - self.robot_position[1]
-                if distance(self.robot_position, robot_waypoint_position) < MOVE_STEP_SIZE:
+                dx = robot_waypoint_position[0] - self.robot_position[robot_index][0]
+                dy = robot_waypoint_position[1] - self.robot_position[robot_index][1]
+                if distance(self.robot_position[robot_index], robot_waypoint_position) < MOVE_STEP_SIZE:
                     robot_new_position = robot_waypoint_position
                 else:
                     if robot_waypoint_index == len(robot_waypoint_positions) - 1:
@@ -395,33 +435,33 @@ class Environment:
                     robot_new_position[1] += move_sign * MOVE_STEP_SIZE * np.sin(robot_new_heading)
 
             # Set new constraint to move the robot to new pose
-            p.changeConstraint(self.robot_cid, jointChildPivot=robot_new_position, jointChildFrameOrientation=p.getQuaternionFromEuler([0, 0, robot_new_heading]), maxForce=MOVEMENT_MAX_FORCE)
+            p.changeConstraint(self.robot_cid[robot_index], jointChildPivot=robot_new_position, jointChildFrameOrientation=p.getQuaternionFromEuler([0, 0, robot_new_heading]), maxForce=MOVEMENT_MAX_FORCE)
 
             p.stepSimulation()
 
             # Get new robot pose
-            self.robot_position, self.robot_heading = self._get_robot_pose()
-            self.robot_position[2] = 0
+            self.robot_position[robot_index], self.robot_heading[robot_index] = self._get_robot_pose(robot_index)
+            self.robot_position[robot_index][2] = 0
 
             # Stop moving if robot collided with obstacle
-            if distance(robot_prev_waypoint_position, self.robot_position) > MOVE_STEP_SIZE:
-                contact_points = p.getContactPoints(self.robot_id)
+            if distance(robot_prev_waypoint_position, self.robot_position[robot_index]) > MOVE_STEP_SIZE:
+                contact_points = p.getContactPoints(self.robot_id[robot_index])
                 if len(contact_points) > 0:
                     for contact_point in contact_points:
-                        if contact_point[2] in self.obstacle_ids + [self.robot_id]:
+                        if contact_point[2] in self.obstacle_ids + [ind for ind in self.robot_id]:
                             robot_is_moving = False
                             robot_hit_obstacle = True
                             break  # Note: self.robot_distance does not get not updated
 
             # Robot no longer turning or moving
-            if (distance(self.robot_position, robot_prev_position) < NOT_MOVING_THRESHOLD
-                    and np.abs(self.robot_heading - robot_prev_heading) < NOT_TURNING_THRESHOLD):
+            if (distance(self.robot_position[robot_index], robot_prev_position) < NOT_MOVING_THRESHOLD
+                    and np.abs(self.robot_heading[robot_index] - robot_prev_heading) < NOT_TURNING_THRESHOLD):
 
                 # Update distance moved
-                robot_distance += distance(robot_prev_waypoint_position, self.robot_position)
+                robot_distance += distance(robot_prev_waypoint_position, self.robot_position[robot_index])
 
                 if self.show_debug_annotations:
-                    p.addUserDebugLine(robot_prev_waypoint_position[:2] + [0.001], self.robot_position[:2] + [0.001], DEBUG_LINE_COLOR)
+                    p.addUserDebugLine(robot_prev_waypoint_position[:2] + [0.001], self.robot_position[robot_index][:2] + [0.001], DEBUG_LINE_COLOR)
 
                 # Increment waypoint index, or stop moving if done
                 if robot_waypoint_index == len(robot_waypoint_positions) - 1:
@@ -434,17 +474,21 @@ class Environment:
 
             # Break if robot is stuck
             sim_steps += 1
-            if sim_steps > STEP_LIMIT:
+            if sim_steps > self.step_limit:
                 break  # Note: self.robot_distance does not get not updated
 
             if sim_steps % MAP_UPDATE_STEPS == 0:
-                cube_found = self._update_state()
-                if self.show_state_representation:
-                    self._visualize_state_representation()
-                if self.show_occupancy_map:
-                    self._update_occupancy_map_visualization(robot_waypoint_positions, robot_target_end_effector_position)
+                cube_found = self._update_state(robot_index)
 
-                if cube_found == True:
+                if len(plt.get_fignums()) > 0:
+                    if self.show_state_representation:
+                        self._visualize_state_representation()
+                    if self.show_occupancy_map:
+                        self.plt.clf()
+                        self._update_occupancy_map_visualization(robot_waypoint_positions, robot_target_end_effector_position)
+                    plt.pause(0.001)
+
+                if cube_found and not self.theoretical_exploration:
                     break
 
         # Step the simulation until everything is still
@@ -454,29 +498,29 @@ class Environment:
         ################################################################################
         # Update state representation
 
-        self.robot_position, self.robot_heading = self._get_robot_pose()
+        self.robot_position[robot_index], self.robot_heading[robot_index] = self._get_robot_pose(robot_index)
         if cube_found == False:
-            cube_found = self._update_state()
+            cube_found = any(self._update_state(robot_ind) for robot_ind in range(self.num_agents))
         if self.show_occupancy_map:
             self._update_occupancy_map_visualization(robot_waypoint_positions, robot_target_end_effector_position)
         
-        self._update_vfm_state()
+        self._update_vfm_state(robot_index)
 
         ################################################################################
         # Compute stats
 
         # Get final pose
-        self.robot_position, self.robot_heading = self._get_robot_pose()
+        self.robot_position[robot_index], self.robot_heading[robot_index] = self._get_robot_pose(robot_index)
 
         # Add distance traveled to cumulative distance
         self.robot_cumulative_distance += robot_distance
 
         # Calculate amount turned to check if robot turned this step
-        robot_turn_angle = heading_difference(robot_initial_heading, self.robot_heading)
+        robot_turn_angle = heading_difference(robot_initial_heading, self.robot_heading[robot_index])
 
         # Determine whether episode is done
         done = False
-        if cube_found or self.inactivity_counter >= self.inactivity_cutoff:
+        if (cube_found and not self.theoretical_exploration) or self.inactivity_counter >= self.inactivity_cutoff:
             done = True
             
         ################################################################################
@@ -484,6 +528,11 @@ class Environment:
         
         current_exploration = self.global_visit_freq_map.copy()
         binary_current_exploration = 1 * (current_exploration > 0)
+
+        # Convert explored pixel area to meters
+        binary_current_exploration_meters = binary_current_exploration.sum() / (LOCAL_MAP_PIXELS_PER_METER * LOCAL_MAP_PIXELS_PER_METER)
+
+        ratio_explored = binary_current_exploration_meters / self.free_space_area
 
         # this_exploration: what the agent see in this iteration (include seen and unseen area)
         this_exploration = current_exploration - last_exploration
@@ -496,6 +545,19 @@ class Environment:
         binary_old_exploration = binary_this_exploration - binary_new_exploration
         old_exp_penalty_scale = 1 * binary_old_exploration * current_exploration       
  
+        # Repeated exploration ratio:
+        explored = self.multi_visit_map != 0
+        overlapped = self.multi_visit_map == -1
+        non_overlapped = self.multi_visit_map > 0
+
+        explored_sum = explored.sum()
+        if explored_sum != 0:
+            overlapped_ratio = overlapped.sum() / explored_sum
+            non_overlapped_ratio = non_overlapped.sum() / explored_sum
+        else:
+            overlapped_ratio = 0
+            non_overlapped_ratio = 0
+
         # OPT-SAM 0: rules of icra 2021 work
         if self.use_opt_rule == 0:
             new_exp_reward = binary_new_exploration.sum()
@@ -525,7 +587,8 @@ class Environment:
         # Compute items to return
         explored_area = binary_current_exploration.sum()
         repetitive_exploration_rate = float(current_exploration.sum()) / (binary_current_exploration.sum())
-        state = self.get_state(done=done)
+        state, state_info = self.get_state(robot_index)
+
         reward = robot_reward
         ministeps = robot_distance / self.ministep_size
         info = {
@@ -535,8 +598,15 @@ class Environment:
             'cumulative_distance': self.robot_cumulative_distance,
             'cumulative_reward': self.robot_cumulative_reward,
             'explored_area': explored_area,
+            'overlapped_ratio': overlapped_ratio,
+            'non_overlapped_ratio': non_overlapped_ratio,
             'repetive_exploration_rate': repetitive_exploration_rate,
+            'ratio_explored': ratio_explored,
+            'euclidean_state': state_info['euclidean_state']
         }
+
+        # plt.imshow(state_info['euclidean_state'][2])
+        # plt.pause(0.0001)
 
         return state, reward, done, info
 
@@ -567,6 +637,9 @@ class Environment:
         p.stopStateLogging(log_id)
 
     def _create_environment(self):
+        # Compute area
+        self.free_space_area = self.room_length * self.room_width - self.num_cubes * CUBE_WIDTH * CUBE_WIDTH
+
         # Create floor
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             # Create custom obj and urdf for current room size
@@ -597,8 +670,11 @@ class Environment:
         self.max_cube_id = max(self.cube_ids)
 
         # Create robot and initialize contraint
-        self.robot_id = p.loadURDF(str(self.assets_dir / 'robot.urdf'))
-        self.robot_cid = p.createConstraint(self.robot_id, -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0, 0, 0])
+        self.robot_id = []
+        self.robot_cid = []
+        for robot_index in range(self.num_agents):
+            self.robot_id.append(p.loadURDF(str(self.assets_dir / 'robot.urdf'), [0, 0, 0]))
+            self.robot_cid.append(p.createConstraint(self.robot_id[robot_index], -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0, 0, 0]))
 
     def _create_obstacles(self):
         obstacles = []
@@ -620,7 +696,7 @@ class Environment:
                 b = b.buffer(buffer_width)
             return b
 
-        def add_random_columns(obstacles, max_num_columns):
+        def add_random_columns(obstacles, max_num_columns, vary_cols=False):
             num_columns = self.random_state.randint(max_num_columns) + 1
             column_length = 0.1
             column_width = 0.1
@@ -633,15 +709,24 @@ class Environment:
                 polygon_union = unary_union(polygons)
                 for _ in range(num_columns):
                     for _ in range(100):
+                        if vary_cols:
+                            random_column_length = self.random_state.uniform(0.03, 0.2)
+                            random_column_width = self.random_state.uniform(0.03, 0.2)
+                            heading = self.random_state.uniform(0, np.pi * 2)
+                        else:
+                            random_column_length = column_length
+                            random_column_width = column_width
+                            heading = 0
+
                         x = self.random_state.uniform(
-                            -self.room_length / 2 + 2 * buffer_width + column_length / 2,
-                            self.room_length / 2 - 2 * buffer_width - column_length / 2
+                            -self.room_length / 2 + 2 * buffer_width + random_column_length / 2,
+                            self.room_length / 2 - 2 * buffer_width - random_column_length / 2
                         )
                         y = self.random_state.uniform(
-                            -self.room_width / 2 + 2 * buffer_width + column_width / 2,
-                            self.room_width / 2 - 2 * buffer_width - column_width / 2
+                            -self.room_width / 2 + 2 * buffer_width + random_column_width / 2,
+                            self.room_width / 2 - 2 * buffer_width - random_column_width / 2
                         )
-                        obstacle = {'type': 'column', 'position': (x, y), 'heading': 0, 'length': column_length, 'width': column_width}
+                        obstacle = {'type': 'column', 'position': (x, y), 'heading': heading, 'length': random_column_length, 'width': random_column_width}
                         b = get_obstacle_box(obstacle)
                         if not polygon_union.intersects(b):
                             new_obstacles.append(obstacle)
@@ -678,6 +763,12 @@ class Environment:
             obstacles.extend(add_random_columns(obstacles, 3))
         elif self.obstacle_config == 'large_columns':
             obstacles.extend(add_random_columns(obstacles, 25))
+        elif self.obstacle_config == 'large_varied_columns':
+            obstacles.extend(add_random_columns(obstacles, 25, vary_cols=True))
+        elif self.obstacle_config == 'larger_columns':
+            obstacles.extend(add_random_columns(obstacles, 50))
+        elif self.obstacle_config == 'large5_columns':
+            obstacles.extend(add_random_columns(obstacles, 125))
         elif self.obstacle_config == 'large_divider':
             obstacles.extend(add_random_horiz_divider())
         else:
@@ -730,11 +821,20 @@ class Environment:
 
     def _reset_poses(self):
         # Random robot pose
-        robot_positions_x, robot_positions_y = self._random_position(ROBOT_RADIUS, 1)
-        robot_positions = np.stack([robot_positions_x, robot_positions_y, np.tile(0, 1)], axis=1)
-        robot_headings = self.random_state.uniform(-np.pi, np.pi, 1)
-        p.resetBasePositionAndOrientation(self.robot_id, robot_positions[0], p.getQuaternionFromEuler([0, 0, robot_headings[0]]))
-        p.changeConstraint(self.robot_cid, jointChildPivot=robot_positions[0], jointChildFrameOrientation=p.getQuaternionFromEuler([0, 0, robot_headings[0]]), maxForce=MOVEMENT_MAX_FORCE)
+        for robot_index in range(self.num_agents):
+            robot_positions_x, robot_positions_y = self._random_position(ROBOT_RADIUS, 1)
+            robot_positions = np.stack([robot_positions_x, robot_positions_y, np.tile(0, 1)], axis=1)
+            robot_headings = self.random_state.uniform(-np.pi, np.pi, 1)
+            p.resetBasePositionAndOrientation(self.robot_id[robot_index], robot_positions[0], p.getQuaternionFromEuler([0, 0, robot_headings[0]]))
+            p.changeConstraint(self.robot_cid[robot_index], jointChildPivot=robot_positions[0], jointChildFrameOrientation=p.getQuaternionFromEuler([0, 0, robot_headings[0]]), maxForce=MOVEMENT_MAX_FORCE)
+
+        # Reset pose and heading variables
+        self.robot_position = []
+        self.robot_heading = []
+        for robot_index in range(self.num_agents):
+            robot_pos, robot_head = self._get_robot_pose(robot_index)
+            self.robot_position.append(robot_pos)
+            self.robot_heading.append(robot_head)
 
         # Random cube poses
         for cube_id in self.cube_ids:
@@ -761,7 +861,7 @@ class Environment:
         while not done:
             # Check whether anything moved since last step
             positions = []
-            for body_id in self.cube_ids + [self.robot_id]:
+            for body_id in self.cube_ids + [ind for ind in self.robot_id]:
                 position, _ = p.getBasePositionAndOrientation(body_id)
                 positions.append(position)
             if len(prev_positions) > 0:
@@ -774,44 +874,74 @@ class Environment:
             prev_positions = positions
             p.stepSimulation()
 
-            # If robot is stacked on top of a cube, reset its position
-            self.robot_position, self.robot_heading = self._get_robot_pose()
-            if np.abs(self.robot_position[2]) > ROBOT_HEIGHT / 4:
-                done = False
-                robot_position_x, robot_position_y = self._random_position(ROBOT_RADIUS)
-                self.robot_position = [robot_position_x, robot_position_y]
-                self.robot_position.append(0)
-            p.changeConstraint(self.robot_cid, jointChildPivot=self.robot_position, jointChildFrameOrientation=p.getQuaternionFromEuler([0, 0, self.robot_heading]), maxForce=500)
+            for robot_index in range(self.num_agents):
+                # If robot is stacked on top of a cube, reset its position
+                self.robot_position[robot_index], self.robot_heading[robot_index] = self._get_robot_pose(robot_index)
+                if np.abs(self.robot_position[robot_index][2]) > ROBOT_HEIGHT / 4:
+                    done = False
+                    robot_position_x, robot_position_y = self._random_position(ROBOT_RADIUS)
+                    self.robot_position[robot_index] = [robot_position_x, robot_position_y]
+                    self.robot_position[robot_index].append(0)
+                p.changeConstraint(self.robot_cid[robot_index], jointChildPivot=self.robot_position[robot_index], jointChildFrameOrientation=p.getQuaternionFromEuler([0, 0, self.robot_heading[robot_index]]), maxForce=500)
 
             # Break if stuck
             sim_steps += 1
-            if sim_steps > STEP_LIMIT:
+            if sim_steps > self.step_limit:
                 break
 
-    def _get_robot_pose(self):
-        robot_position, robot_orientation = p.getBasePositionAndOrientation(self.robot_id)
+    def _get_robot_pose(self, robot_index):
+        robot_position, robot_orientation = p.getBasePositionAndOrientation(self.robot_id[robot_index])
         robot_position = list(robot_position)
         robot_heading = orientation_to_heading(robot_orientation)
         return robot_position, robot_heading
 
     def _visualize_state_representation(self):
-        state = self.get_state()
+        COLS = 4
 
-        self.sr_plt.clf()
-        self.sr_plt.ion()
-        ax1 = self.sr_plt.subplot(141)
-        self.sr_plt.imshow(state[:,:,0], cmap='gray')
-        ax1.axis('off')
-        ax2 = self.sr_plt.subplot(142)
-        self.sr_plt.imshow(state[:,:,1], cmap='gray')
-        ax2.axis('off')
-        ax3 = self.sr_plt.subplot(143)
-        self.sr_plt.imshow(state[:,:,2])
-        ax3.axis('off')
-        ax4 = self.sr_plt.subplot(144)
-        self.sr_plt.imshow(state[:,:,3])
-        ax4.axis('off')
-        self.sr_plt.pause(0.001)
+        for robot_index in range(self.num_agents):
+            state, state_info = self.get_state(robot_index)
+
+            if self.state_type == 'vfm':
+                num_channels = 4
+            if self.state_type == 'ivfm':
+                num_channels = 2
+            if self.state_type == 'igrad':
+                num_channels = 1
+            if self.state_type == 'hyperbolic':
+                num_channels = 4
+
+            plot_start_index = robot_index * COLS
+
+            # if type(self.debug_images[robot_index]) != type(None):
+            #     ax5 = self.sr_plt.subplot(self.num_agents, COLS, plot_start_index + 5)
+            #     colors = self.sr_plt.imshow(self.debug_images[robot_index])
+            #     self.sr_plt.gcf().colorbar(colors, ax=ax5)
+            #     ax5.axis('off')
+
+            if not self.show_state_representation:
+                return
+
+            ax1 = self.sr_subplots[plot_start_index + 0]
+            colors = ax1.imshow(state[:,:,0])
+            # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
+            # ax1.axis('off')
+
+            if num_channels > 1:
+                ax2 = self.sr_subplots[plot_start_index + 1]
+                colors = ax2.imshow(state[:,:,1])
+                # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
+                # ax2.axis('off')
+
+                if num_channels > 2:
+                    ax3 = self.sr_subplots[plot_start_index + 2]
+                    colors = ax3.imshow(state[:,:,2])
+                    # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
+                    # ax3.axis('off')
+
+                    ax4 = self.sr_subplots[plot_start_index + 3]
+                    colors = ax4.imshow(state[:,:,3])
+                    # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
+                    # ax4.axis('off')
 
     def _update_occupancy_map_visualization(self, robot_waypoint_positions=None, robot_target_end_effector_position=None):
         occupancy_map_vis = self._create_padded_room_zeros() + 0.5
@@ -819,24 +949,29 @@ class Environment:
         occupancy_map_vis[np.isclose(self.occupancy_map, 1)] = 0
         height, width = occupancy_map_vis.shape
         height, width = height / LOCAL_MAP_PIXELS_PER_METER, width / LOCAL_MAP_PIXELS_PER_METER
-        self.plt.clf()
-        self.plt.axis('off')
-        self.plt.axis([
+        ax = self.plt.gca()
+        ax.axis('off')
+        ax.axis([
             -self.room_length / 2 - ROBOT_RADIUS, self.room_length / 2 + ROBOT_RADIUS,
             -self.room_width / 2 - ROBOT_RADIUS, self.room_width / 2 + ROBOT_RADIUS
         ])
-        self.plt.imshow(255 * occupancy_map_vis, extent=(-width / 2, width / 2, -height / 2, height / 2), cmap='gray', vmin=0, vmax=255)
+        ax.imshow(255 * occupancy_map_vis, extent=(-width / 2, width / 2, -height / 2, height / 2), cmap='gray', vmin=0, vmax=255)
         if robot_waypoint_positions is not None:
-            self.plt.plot(np.asarray(robot_waypoint_positions)[:, 0], np.asarray(robot_waypoint_positions)[:, 1], color='r', marker='.')
+            ax.plot(np.asarray(robot_waypoint_positions)[:, 0], np.asarray(robot_waypoint_positions)[:, 1], color='r', marker='.')
         if robot_target_end_effector_position is not None:
-            self.plt.plot(robot_target_end_effector_position[0], robot_target_end_effector_position[1], color='r', marker='x')
-        self.plt.pause(0.001)  # Update display
+            ax.plot(robot_target_end_effector_position[0], robot_target_end_effector_position[1], color='r', marker='x')
 
     def _create_padded_room_zeros(self):
         return np.zeros((
             int(2 * np.ceil((self.room_width * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2)),  # Ensure even
             int(2 * np.ceil((self.room_length * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2))
         ), dtype=np.float32)
+    
+    def _create_padded_room_zeros_int(self):
+        return np.zeros((
+            int(2 * np.ceil((self.room_width * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2)),  # Ensure even
+            int(2 * np.ceil((self.room_length * LOCAL_MAP_PIXELS_PER_METER + LOCAL_MAP_PIXEL_WIDTH * np.sqrt(2)) / 2))
+        ), dtype=int)
 
     def _create_local_position_map(self):
         local_position_map_x = np.zeros((LOCAL_MAP_PIXEL_WIDTH, LOCAL_MAP_PIXEL_WIDTH), dtype=np.float32)
@@ -854,23 +989,31 @@ class Environment:
     def _create_global_shortest_path_map(self, robot_position):
         pixel_i, pixel_j = position_to_pixel_indices(robot_position[0], robot_position[1], self.configuration_space.shape)
         pixel_i, pixel_j = self._closest_valid_cspace_indices(pixel_i, pixel_j)
-        global_map, _ = spfa.spfa(self.configuration_space, (pixel_i, pixel_j))
+        global_map, _ = spfa_pointwise(self.configuration_space, (pixel_i, pixel_j))
         global_map /= LOCAL_MAP_PIXELS_PER_METER
         global_map /= (np.sqrt(2) * LOCAL_MAP_PIXEL_WIDTH) / LOCAL_MAP_PIXELS_PER_METER
         global_map *= self.shortest_path_channel_scale
         return global_map
 
-    def _get_new_observation(self):
+    def _create_global_boundary_gradient_map(self):
+        global_map, _ = spfa.spfa_dense_source(self.configuration_space, self.global_visit_freq_map == 0)
+        global_map /= LOCAL_MAP_PIXELS_PER_METER
+        global_map /= (np.sqrt(2) * LOCAL_MAP_PIXEL_WIDTH) / LOCAL_MAP_PIXELS_PER_METER
+        global_map += 1 - self.configuration_space
+        global_map *= self.shortest_path_channel_scale
+        return global_map 
+
+    def _get_new_observation(self, robot_index):
         # Capture images from forward-facing camera
-        camera_position = self.robot_position[:2] + [CAMERA_HEIGHT]
+        camera_position = self.robot_position[robot_index][:2] + [CAMERA_HEIGHT]
         camera_target = [
-            camera_position[0] + CAMERA_HEIGHT * np.tan(np.radians(90 + CAMERA_PITCH)) * np.cos(self.robot_heading),
-            camera_position[1] + CAMERA_HEIGHT * np.tan(np.radians(90 + CAMERA_PITCH)) * np.sin(self.robot_heading),
+            camera_position[0] + CAMERA_HEIGHT * np.tan(np.radians(90 + CAMERA_PITCH)) * np.cos(self.robot_heading[robot_index]),
+            camera_position[1] + CAMERA_HEIGHT * np.tan(np.radians(90 + CAMERA_PITCH)) * np.sin(self.robot_heading[robot_index]),
             0
         ]
         camera_up = [
-            np.cos(np.radians(90 + CAMERA_PITCH)) * np.cos(self.robot_heading),
-            np.cos(np.radians(90 + CAMERA_PITCH)) * np.sin(self.robot_heading),
+            np.cos(np.radians(90 + CAMERA_PITCH)) * np.cos(self.robot_heading[robot_index]),
+            np.cos(np.radians(90 + CAMERA_PITCH)) * np.sin(self.robot_heading[robot_index]),
             np.sin(np.radians(90 + CAMERA_PITCH))
         ]
         view_matrix = p.computeViewMatrix(camera_position, camera_target, camera_up)
@@ -899,7 +1042,7 @@ class Environment:
         seg = np.zeros_like(seg_raw, dtype=np.float32)
         seg += FLOOR_SEG_INDEX * (seg_raw == 0)
         seg += OBSTACLE_SEG_INDEX * (seg_raw >= self.min_obstacle_id) * (seg_raw <= self.max_obstacle_id)
-        seg += ROBOT_SEG_INDEX * (seg_raw == self.robot_id)
+        seg += (ROBOT_SEG_INDEX_FIRST + robot_index) * (seg_raw == self.robot_id[robot_index])
         seg += CUBE_SEG_INDEX * (seg_raw >= self.min_cube_id) * (seg_raw <= self.max_cube_id)
         seg /= MAX_SEG_INDEX
         
@@ -917,18 +1060,33 @@ class Environment:
             
         return points, seg, seg_visit, cube_found
 
-    def _update_vfm_state(self):
+    def _update_vfm_state(self, robot_index):
+        robot_index += 1
+
         self.global_visit_freq_map += self.step_exploration
+        # If the multi_visit_map is unexplored, then claim
+        # If the multi_visit_map has already been claimed, then set to -1 (overlap)
+        recent_explored = self.step_exploration > 0
+        unexplored = self.multi_visit_map == 0
+        explored_by_others = np.logical_and(self.multi_visit_map > 0, self.multi_visit_map != robot_index) 
+        self.multi_visit_map[unexplored & recent_explored] = robot_index
+        self.multi_visit_map[explored_by_others & recent_explored] = -1
+
+        # plt.imshow(self.multi_visit_map)
+        # plt.pause(0.1)
+
         self.step_exploration = self._create_padded_room_zeros()
 
-    def _update_state(self):
-        points, seg, seg_visit, cube_found = self._get_new_observation()
-        
+    def _update_state(self, robot_index):
+
+        points, seg, seg_visit, cube_found = self._get_new_observation(robot_index)
+
         # Update occupancy map
         augmented_points = np.concatenate((points, np.isclose(seg[:, :, np.newaxis], OBSTACLE_SEG_INDEX / MAX_SEG_INDEX)), axis=2).reshape(-1, 4)
         obstacle_points = augmented_points[np.isclose(augmented_points[:, 3], 1)]
         pixel_i, pixel_j = position_to_pixel_indices(obstacle_points[:, 0], obstacle_points[:, 1], self.occupancy_map.shape)
-        self.occupancy_map[pixel_i, pixel_j] = 1
+        self.occupancy_map[pixel_i, pixel_j] += 1
+
         if self.show_occupancy_map:
             free_space_points = augmented_points[np.isclose(augmented_points[:, 3], 0)]
             pixel_i, pixel_j = position_to_pixel_indices(free_space_points[:, 0], free_space_points[:, 1], self.free_space_map.shape)
@@ -956,11 +1114,11 @@ class Environment:
 
         return cube_found
     
-    def _get_local_overhead_map(self):
+    def _get_local_overhead_map(self, robot_index):
         # Note: Can just use _get_local_map. Keeping this here only for reproducibility since it gives slightly different outputs.
-        rotation_angle = np.degrees(self.robot_heading) - 90
-        pos_y = int(np.floor(self.global_overhead_map.shape[0] / 2 - self.robot_position[1] * LOCAL_MAP_PIXELS_PER_METER))
-        pos_x = int(np.floor(self.global_overhead_map.shape[1] / 2 + self.robot_position[0] * LOCAL_MAP_PIXELS_PER_METER))
+        rotation_angle = np.degrees(self.robot_heading[robot_index]) - 90
+        pos_y = int(np.floor(self.global_overhead_map.shape[0] / 2 - self.robot_position[robot_index][1] * LOCAL_MAP_PIXELS_PER_METER))
+        pos_x = int(np.floor(self.global_overhead_map.shape[1] / 2 + self.robot_position[robot_index][0] * LOCAL_MAP_PIXELS_PER_METER))
         mask = rotate_image(np.zeros((LOCAL_MAP_PIXEL_WIDTH, LOCAL_MAP_PIXEL_WIDTH), dtype=np.float32), rotation_angle, order=0)
         y_start = pos_y - int(mask.shape[0] / 2)
         y_end = y_start + mask.shape[0]
@@ -973,6 +1131,75 @@ class Environment:
         x_start = int(crop.shape[1] / 2 - LOCAL_MAP_PIXEL_WIDTH / 2)
         x_end = x_start + LOCAL_MAP_PIXEL_WIDTH
         return crop[y_start:y_end, x_start:x_end]
+
+    def euc2hyperbolic_mapping(self, global_map, robot_position, robot_heading, oob_value=0):
+        rotation_angle = -1 * (robot_heading - np.pi/2)
+
+        # Hyperbolic ball model coordinate mapping from unit circle to (x, y, _) in R3 With rotation
+        with np.errstate(divide='ignore', invalid='ignore'):
+            # Generate grid with origin at center of local map
+            half_width = LOCAL_MAP_PIXEL_WIDTH/2
+            xgrid, ygrid = np.meshgrid(np.arange(-half_width, half_width, 1, dtype=np.float32),
+                                       np.arange(-half_width, half_width, 1, dtype=np.float32))
+            # Compute rotation
+            cc = np.cos(rotation_angle)
+            ss = np.sin(rotation_angle)
+            xgrid_rotated = xgrid * cc - ygrid * ss
+            ygrid_rotated = xgrid * ss + ygrid * cc
+            # Compute projection
+            inverse_dist = 1 - (np.hypot(xgrid, ygrid) / half_width) / self.hyperbolic_zoom# zoom
+            self.hyperbolic_map_x = (2 * xgrid_rotated / inverse_dist).astype(np.uint32)
+            self.hyperbolic_map_y = (2 * ygrid_rotated / inverse_dist).astype(np.uint32)
+
+        # Since this square map contains pixels beyond the unit circle, a validity mask is provided
+        self.hyperbolic_map_valid = inverse_dist > 1e-6
+        self.hyperbolic_map_x[~self.hyperbolic_map_valid] = 0
+        self.hyperbolic_map_y[~self.hyperbolic_map_valid] = 0
+
+        # Trivial translation of the (0, 0) centered hyperbolic mapping 
+        # allows generalization to any center on the global map
+        pixel_postion_x = int(np.floor(robot_position[0] * LOCAL_MAP_PIXELS_PER_METER + global_map.shape[1] / 2))
+        pixel_postion_y = int(np.floor(-robot_position[1] * LOCAL_MAP_PIXELS_PER_METER + global_map.shape[0] / 2))
+
+        translated_mapping_x = self.hyperbolic_map_x + pixel_postion_x
+        translated_mapping_y = self.hyperbolic_map_y + pixel_postion_y
+
+        # Set area beyond global map to oob_value
+        outbounds_x = np.logical_or(translated_mapping_y < 0, translated_mapping_y >= global_map.shape[0])
+        outbounds_y = np.logical_or(translated_mapping_x < 0, translated_mapping_x >= global_map.shape[1])
+        translated_mapping_y[outbounds_x] = 0
+        translated_mapping_x[outbounds_y] = 0
+        hyperbolic_map = global_map[translated_mapping_y, translated_mapping_x]
+        hyperbolic_map[np.logical_or(outbounds_x, outbounds_y)] = oob_value # Beyond input boundary
+        hyperbolic_map[~self.hyperbolic_map_valid] = oob_value # Beyond unit circle
+        
+        return hyperbolic_map
+
+    def map_to_euclidean(self, pixel_position):
+        inverse_dist = 1 - np.hypot(pixel_position[0], pixel_position[1]) / (LOCAL_MAP_PIXEL_WIDTH/2) / self.hyperbolic_zoom # zoom
+        if inverse_dist < 1e-6: # out of range
+            inverse_dist = 1e-6
+        ret = (2 * pixel_position[0] / inverse_dist,
+               2 * pixel_position[1] / inverse_dist)
+        return ret
+
+    @staticmethod
+    def map_to_hyperbolic(pixel_position, hyperbolic_zoom=1):
+        dist = np.sqrt(pixel_position[0] * pixel_position[0] + pixel_position[1] * pixel_position[1])
+        c = (LOCAL_MAP_PIXEL_WIDTH/2) * hyperbolic_zoom
+        ret = (c * pixel_position[0] / (dist + 2 * c),
+               c * pixel_position[1] / (dist + 2 * c))
+        return ret
+
+    @staticmethod
+    def action_to_hyp_action(action: int, hyperbolic_zoom):
+        robot_action = np.unravel_index(action, (LOCAL_MAP_PIXEL_WIDTH, LOCAL_MAP_PIXEL_WIDTH))            
+        y_movement_px =  LOCAL_MAP_PIXEL_WIDTH / 2 - float(robot_action[0])
+        x_movement_px = -LOCAL_MAP_PIXEL_WIDTH / 2 + float(robot_action[1])
+        hyp_robot_action = Environment.map_to_hyperbolic((y_movement_px, x_movement_px), hyperbolic_zoom)
+        ret = int(-hyp_robot_action[0] + LOCAL_MAP_PIXEL_WIDTH/2) * LOCAL_MAP_PIXEL_WIDTH + \
+              int( hyp_robot_action[1] + LOCAL_MAP_PIXEL_WIDTH/2)
+        return ret
 
     @staticmethod
     def _get_local_map(global_map, robot_position, robot_heading):
@@ -997,28 +1224,104 @@ class Environment:
         local_map -= local_map.min()  # Move the min to 0 to make invariant to size of environment
         return local_map
 
-    def get_state(self, done=False):
-        if done:
-            return None
+    def _get_local_boundary_gradient_map(self, global_map, robot_position, robot_heading):
+        local_boundary_gradient_map = self._get_local_map(global_map, robot_position, robot_heading)
+        local_boundary_gradient_map -= local_boundary_gradient_map.min()  # Move the min to 0 to make invariant to size of environment
+        return local_boundary_gradient_map
 
-        # Overhead map
+    def get_state(self, robot_index):
         channels = []
-        channels.append(self._get_local_overhead_map())
+        info = {'euclidean_state': None}
 
-        # Robot state
-        channels.append(self.robot_state_channel)
+        # Merged channels
+        if self.state_type == 'ivfm':
+            # Untraversible space 
+            untraversible_space = 1 - self._get_local_map(self.configuration_space, self.robot_position[robot_index], self.robot_heading[robot_index])
+
+            # Robot collision mask
+            robot_state = self.robot_state_channel
+
+            # VFM sigmoid asymptote at 10
+            vfm = self._get_local_visit_frequency_map(self.global_visit_freq_map, self.robot_position[robot_index], self.robot_heading[robot_index])
+            vfm_capped = 20 / (1 + np.exp(-0.2 * vfm)) - 10
+            vfm_capped[untraversible_space > 0] = 0
+            vfm_capped[robot_state > 0] = 0
+
+            # IVFM with 10 reserved for obstacles
+            channels.append(10 * np.minimum(robot_state + untraversible_space, 1) + vfm_capped)
+
+        # IVFM but with boundary gradient
+        elif self.state_type == 'igrad':
+            # Untraversible space 
+            untraversible_space = 1 - self._get_local_map(self.configuration_space, self.robot_position[robot_index], self.robot_heading[robot_index])
+
+            # Robot collision mask
+            robot_state = self.robot_state_channel
+
+            # Boundary gradient capped at 0.25
+            global_boundary_gradient_map = self._create_global_boundary_gradient_map()
+            local_boundary_gradient_map = self._get_local_boundary_gradient_map(global_boundary_gradient_map, self.robot_position[robot_index], self.robot_heading[robot_index])
+            local_boundary_gradient_map[untraversible_space > 0] = 0
+            local_boundary_gradient_map[robot_state > 0] = 0
+
+            # igrad with obstacles at value self.shortest_path_channel_scale 
+            channels.append(self.shortest_path_channel_scale * np.minimum(robot_state + untraversible_space, 1) + local_boundary_gradient_map)
         
-        # Visit frequency map
-        if self.use_visit_frequency_channel:
-            channels.append(self._get_local_visit_frequency_map(self.global_visit_freq_map, self.robot_position, self.robot_heading))
+        # 4 channels (original)
+        elif self.state_type == 'vfm':   
+            # Overhead map
+            channels.append(self._get_local_overhead_map(robot_index))
+
+            # Robot state
+            channels.append(self.robot_state_channel)
+
+            # Visit frequency map (with obstacles masked out)
+            if self.use_visit_frequency_channel:
+                vfm = self._get_local_visit_frequency_map(self.global_visit_freq_map, self.robot_position[robot_index], self.robot_heading[robot_index])
+                channels.append(vfm)
+
+        # 4 channels (original)
+        elif self.state_type == 'hyperbolic':   
+            # Also return non hyperbolic state
+            info['euclidean_state'] = [
+                self._get_local_overhead_map(robot_index),
+                self.euc_robot_state_channel,
+                self._get_local_visit_frequency_map(self.global_visit_freq_map, self.robot_position[robot_index], self.robot_heading[robot_index])
+            ]
+
+            # Overhead map
+            channels.append(self.euc2hyperbolic_mapping(self.global_overhead_map, self.robot_position[robot_index], self.robot_heading[robot_index]))
+
+            # Robot state
+            channels.append(self.robot_state_channel)
+
+            # Visit frequency map (with obstacles masked out)
+            channels.append(self.euc2hyperbolic_mapping(self.global_visit_freq_map, 
+                                                self.robot_position[robot_index], 
+                                                self.robot_heading[robot_index]))
+
+        elif self.state_type == 'ivfm_with_grad':
+            global_boundary_gradient_map = self._create_global_boundary_gradient_map()
+            channels.append(self._get_local_boundary_gradient_map(global_boundary_gradient_map, self.robot_position[robot_index], self.robot_heading[robot_index]))
         
+        else:
+            raise RuntimeError(f"'{self.state_type}' is not a valid state type")
+
         # Additional channels
         if self.use_shortest_path_channel:
-            global_shortest_path_map = self._create_global_shortest_path_map(self.robot_position)
-            channels.append(self._get_local_distance_map(global_shortest_path_map, self.robot_position, self.robot_heading))
+            global_shortest_path_map = self._create_global_shortest_path_map(self.robot_position[robot_index])
+            
+            if self.state_type == 'hyperbolic':
+                channels.append(self.euc2hyperbolic_mapping(global_shortest_path_map, self.robot_position[robot_index], self.robot_heading[robot_index]))
+                info['euclidean_state'].append(self._get_local_distance_map(global_shortest_path_map, self.robot_position[robot_index], self.robot_heading[robot_index]))
+            else:
+                channels.append(self._get_local_distance_map(global_shortest_path_map, self.robot_position[robot_index], self.robot_heading[robot_index]))            
 
         assert all(channel.dtype == np.float32 for channel in channels)
-        return np.stack(channels, axis=2)
+        stacked_state = np.stack(channels, axis=2)
+
+        info['euclidean_state'] = stacked_state if info['euclidean_state'] is None else np.stack(info['euclidean_state'], axis=-1)
+        return stacked_state, info
 
     def _shortest_path(self, source_position, target_position, check_straight=False, configuration_space=None):
         if configuration_space is None:
@@ -1037,7 +1340,7 @@ class Environment:
         # Run SPFA
         source_i, source_j = self._closest_valid_cspace_indices(source_i, source_j)  # Note: does not use the cspace passed into this method
         target_i, target_j = self._closest_valid_cspace_indices(target_i, target_j)
-        _, parents = spfa.spfa(configuration_space, (source_i, source_j))
+        _, parents = spfa_pointwise(configuration_space, (source_i, source_j))
 
         # Recover shortest path
         parents_ij = np.stack((parents // parents.shape[1], parents % parents.shape[1]), axis=2)
