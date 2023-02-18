@@ -84,7 +84,8 @@ def _run_eval(cfg, num_episodes=40):
                                     'overlapped_ratio': info['overlapped_ratio'],\
                                     'non_overlapped_ratio': info['non_overlapped_ratio'],\
                                     'ratio_explored': info['ratio_explored'],\
-                                    'repetitive_exploration_rate': info['repetive_exploration_rate']})
+                                    'repetitive_exploration_rate': info['repetive_exploration_rate'],\
+                                    'bandwidth': info['bandwidth']})
         
         time_elasped = end_time - start_time
 
