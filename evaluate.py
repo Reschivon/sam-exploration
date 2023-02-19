@@ -64,6 +64,7 @@ def _run_eval(cfg, num_episodes=40):
             # print(indexes)
             indexes = sorted(indexes, key=lambda tup:tup[0])
 
+        infos = []
         for robot_index in range(env.num_agents):
             if cfg['frontier_exploration']:
                 # For each robot, look up its assigned frontier point
@@ -73,6 +74,7 @@ def _run_eval(cfg, num_episodes=40):
             else:
                 action, _ = policy.step(states[robot_index])
                 curr_state, _, curr_done, info = env.step(action, robot_index)
+                infos.append(info)
 
             states[robot_index] = curr_state
             done = True if curr_done else done

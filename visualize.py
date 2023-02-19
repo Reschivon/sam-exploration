@@ -82,17 +82,17 @@ class result():
         print_array(self.np_pe_list)
 
         print('Commands:')
+        plt.plot(range(len(self.np_cmd_list)), self.np_cmd_list)
         print_array(self.np_cmd_list)
 
         print('Overlap Ratio:')
         print_array(self.np_overlap_list)
 
-        print('    Bandwidth:')
+        print('Bandwidth:')
         print_array(self.np_bandwidth_list)
 
         print('Coverage:') 
-        # only the last
-        print_array(self.np_coverage_list[-1])
+        print_array(self.np_coverage_list)
 
         print('not_found:\n\t', self.fail)
 
