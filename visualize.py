@@ -79,7 +79,7 @@ class result():
     
     def print_stats(self):
         def print_array(arr):
-            print(f'\t {np.mean(arr):.4f} \t std: {np.std(arr):.4f}')
+            print(f'\t {np.nanmean(arr):.4f} \t std: {np.std(arr):.4f}')
 
         print('RER:')
         print_array(self.np_rer_list)

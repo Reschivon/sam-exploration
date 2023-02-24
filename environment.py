@@ -627,7 +627,11 @@ class Environment:
 
         # Compute items to return
         explored_area = binary_current_exploration.sum()
-        repetitive_exploration_rate = float(current_exploration.sum()) / (binary_current_exploration.sum())
+        repetitive_exploration_rate = float(current_exploration.sum()) / explored_area
+        # if explored_area == 0:
+        #     print(current_exploration.sum(), explored_area)
+        #     plt.imshow(binary_current_exploration)
+        #     plt.pause(0.0001)
         state, state_info = self.get_state(robot_index)
 
         reward = robot_reward
