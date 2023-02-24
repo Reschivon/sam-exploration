@@ -1,27 +1,15 @@
-python evaluate.py --config-path test_logs/opt-sam-opt/config.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-2agent/config.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-4agent/config.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-divider-ivfm/one.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-divider-ivfm/two.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-divider-ivfm/four.yml
 
-python evaluate.py --config-path test_logs/opt-sam-opt-random/config.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-large2x/agent2.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-large2x/agent1.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-large2x/agent3.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-large2x/agent4.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-large2x/agent5.yml
 
-python evaluate.py --config-path test_logs/opt-sam-opt-frontier/config.yml
-
-python evaluate.py --config-path test_logs/opt-sam-opt-ivfm/config.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-2agent/config.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-4agent/config.yml
-
-python evaluate.py --config-path test_logs/opt-sam-opt-theo/config.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-theo-2agent/config.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-theo-4agent/config.yml
-
-python evaluate.py --config-path test_logs/opt-sam-opt-large2x/agent1.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-large2x/agent2.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-large2x/agent3.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-large2x/agent4.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-large2x/agent5.yml
-
-python evaluate.py --config-path test_logs/opt-sam-opt-large4x/agent1.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-large4x/agent2.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-large4x/agent3.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-large4x/agent4.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-large4x/agent5.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-large4x/agent1.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-large4x/agent2.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-large4x/agent3.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-large4x/agent4.yml
+python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-large4x/agent5.yml

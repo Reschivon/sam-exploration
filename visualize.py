@@ -21,7 +21,7 @@ class result():
             bf = self.file[i]
             
             cmd_count = len(bf) // int(agents)
-            print(cmd_count)
+            # print(cmd_count)
             
             # print('end condition', bf[-1]['end_episode_condition'])
             if bf[-1]['end_episode_condition'] == 'timed_out':
