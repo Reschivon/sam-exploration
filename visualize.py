@@ -70,7 +70,7 @@ class result():
     
     def print_stats(self):
         def print_array(arr):
-            print('\t', np.mean(arr), 'std:', np.std(arr))
+            print(f'\t {np.mean(arr):6.4f}, std: {np.std(arr):6.4f}')
 
         print('RER:')
         print_array(self.np_rer_list)

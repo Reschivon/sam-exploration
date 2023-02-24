@@ -264,7 +264,7 @@ class Environment:
         self.global_overhead_map = self._create_padded_room_zeros()
         self.occupancy_map = self._create_padded_room_zeros()
         self.global_visit_freq_map = self._create_padded_room_zeros()
-        self.multi_visit_map = [self._create_padded_room_zeros_type(bool) for _ in range(self.num_agents)]
+        self.multi_visit_map = [self._create_padded_room_zeros_type(int) for _ in range(self.num_agents)]
         self.step_exploration = self._create_padded_room_zeros()
         if self.show_occupancy_map:
             self.free_space_map = self._create_padded_room_zeros()
@@ -493,9 +493,7 @@ class Environment:
             if sim_steps % MAP_UPDATE_STEPS == 0:
                 cube_found = self._update_state(robot_index)
 
-                if len(plt.get_fignums()) > 0:
-                    if self.show_state_representation:
-                        self._visualize_state_representation()
+                if len(plt.get_fignums()) > 0:                        
                     if self.show_occupancy_map:
                         self.plt.clf()
                         self._update_occupancy_map_visualization(robot_waypoint_positions, robot_target_end_effector_position)
@@ -514,6 +512,8 @@ class Environment:
         # Update state representation
 
         self._update_vfm_state(robot_index)
+
+        self._visualize_state_representation()
 
         self.robot_position[robot_index], self.robot_heading[robot_index] = self._get_robot_pose(robot_index)
         if cube_found == False:
@@ -564,8 +564,15 @@ class Environment:
  
         # Repeated exploration ratio:
         multi_visit_sum = self._create_padded_room_zeros_type(int)
+        i = 0
         for visits in self.multi_visit_map:
+            i += 1
+            plt.figure(i + 2)
+            plt.imshow(visits)
             multi_visit_sum += visits
+
+        plt.figure(0)
+        plt.imshow(multi_visit_sum)
 
         overlapped = multi_visit_sum > 1
         non_overlapped = multi_visit_sum == 1
@@ -954,24 +961,24 @@ class Environment:
             if not self.show_state_representation:
                 return
 
-            ax1 = self.sr_subplots[plot_start_index + 0]
+            ax1 = self.sr_subplots[0]
             colors = ax1.imshow(state[:,:,0])
             # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
             # ax1.axis('off')
 
             if num_channels > 1:
-                ax2 = self.sr_subplots[plot_start_index + 1]
+                ax2 = self.sr_subplots[1]
                 colors = ax2.imshow(state[:,:,1])
                 # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
                 # ax2.axis('off')
 
                 if num_channels > 2:
-                    ax3 = self.sr_subplots[plot_start_index + 2]
+                    ax3 = self.sr_subplots[2]
                     colors = ax3.imshow(state[:,:,2])
                     # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
                     # ax3.axis('off')
 
-                    ax4 = self.sr_subplots[plot_start_index + 3]
+                    ax4 = self.sr_subplots[3]
                     colors = ax4.imshow(state[:,:,3])
                     # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
                     # ax4.axis('off')
@@ -1098,7 +1105,7 @@ class Environment:
         # If the multi_visit_map is unexplored, then claim
         # If the multi_visit_map has already been claimed, then set to -1 (overlap)
         recent_explored = self.step_exploration > 0
-        self.multi_visit_map[robot_index][recent_explored] = True
+        self.multi_visit_map[robot_index][recent_explored] += 1
 
     def _update_state(self, robot_index):
 

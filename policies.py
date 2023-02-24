@@ -2,6 +2,7 @@ import random
 import torch
 from torchvision import transforms
 import models
+from matplotlib import pyplot as plt
 
 class DQNPolicy:
     def __init__(self, cfg, action_space, train=False, random_seed=None):
@@ -38,6 +39,8 @@ class DQNPolicy:
         state = self.apply_transform(state).to(self.device)
         with torch.no_grad():
             output = self.policy_net(state).squeeze(0)
+            plt.figure(2)
+            plt.imshow(output.detach().cpu().squeeze(0), cmap='plasma')
         if random.random() < exploration_eps:
             action = random.randrange(self.action_space)
         else:
