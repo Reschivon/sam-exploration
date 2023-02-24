@@ -819,6 +819,9 @@ class Environment:
             obstacles.extend(add_random_columns(obstacles, 125))
         elif self.obstacle_config == 'large4_columns':
             obstacles.extend(add_random_columns(obstacles, 100))
+        elif self.obstacle_config == 'large_divider_columns':
+            obstacles.extend(add_random_horiz_divider())
+            obstacles.extend(add_random_columns(obstacles, 20))
         elif self.obstacle_config == 'large_divider':
             obstacles.extend(add_random_horiz_divider())
         else:
