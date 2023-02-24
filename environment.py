@@ -309,6 +309,8 @@ class Environment:
         # Initial pose
         robot_initial_position, robot_initial_heading = self._get_robot_pose(robot_index)
 
+        self.step_exploration = self._create_padded_room_zeros()
+
         # Compute target end effector position
         if self.use_steering_commands:
             straight_line_dist = self.fixed_step_size + ROBOT_RADIUS
@@ -417,6 +419,10 @@ class Environment:
         cube_found = False
 
         sim_steps = 0
+        occupancy_before_step = self.occupancy_map.copy()
+
+        occupancy_band_incr = 0
+        vfm_band_incr = 0
         while True:
             if not robot_is_moving:
                 break
@@ -489,10 +495,12 @@ class Environment:
             if sim_steps > self.step_limit:
                 break  # Note: self.robot_distance does not get not updated
 
-            occupancy_before_step = self.occupancy_map.copy()
             if sim_steps % MAP_UPDATE_STEPS == 0:
+                past_occ_map = self.occupancy_map.copy()
+                past_vfm = self.step_exploration.copy()
                 cube_found = self._update_state(robot_index)
-
+                occupancy_band_incr += self.min_crop_size(self.occupancy_map - past_occ_map) + 2 + 2 + 2
+                vfm_band_incr += self.min_crop_size(self.step_exploration - past_vfm) + 2 + 2 + 2
                 if len(plt.get_fignums()) > 0:
                     if self.show_state_representation:
                         self._visualize_state_representation()
@@ -504,7 +512,7 @@ class Environment:
                 if cube_found and not self.theoretical_exploration:
                     break
 
-            self.new_occ_size = self.min_crop_size(self.occupancy_map - occupancy_before_step)
+        self.new_occ_size = self.min_crop_size(self.occupancy_map - occupancy_before_step)
 
         # Step the simulation until everything is still
         if cube_found == False:
@@ -515,13 +523,15 @@ class Environment:
 
         self._update_vfm_state(robot_index)
 
+        self.step_exploration_copy = self.step_exploration.copy()
+
         self.robot_position[robot_index], self.robot_heading[robot_index] = self._get_robot_pose(robot_index)
         if cube_found == False:
             cube_found = any(self._update_state(robot_ind) for robot_ind in range(self.num_agents))
         if self.show_occupancy_map:
             self._update_occupancy_map_visualization(robot_waypoint_positions, robot_target_end_effector_position)
         
-        self.step_exploration = self._create_padded_room_zeros()
+        self.step_exploration = self.step_exploration_copy
 
         ################################################################################
         # Compute stats
@@ -547,9 +557,9 @@ class Environment:
         binary_current_exploration = 1 * (current_exploration > 0)
 
         # Convert explored pixel area to meters
-        binary_current_exploration_meters = binary_current_exploration.sum() / (LOCAL_MAP_PIXELS_PER_METER * LOCAL_MAP_PIXELS_PER_METER)
+        # binary_current_exploration_meters = binary_current_exploration.sum() / (LOCAL_MAP_PIXELS_PER_METER * LOCAL_MAP_PIXELS_PER_METER)
 
-        ratio_explored = binary_current_exploration_meters / self.free_space_area
+        ratio_explored = binary_current_exploration.sum() / self.configuration_space.sum()
 
         # this_exploration: what the agent see in this iteration (include seen and unseen area)
         this_exploration = current_exploration - last_exploration
@@ -582,10 +592,12 @@ class Environment:
         # plt.pause(0.01)
 
         # Bandwidth
-        # In each step, the 'server' sends the state to the agent
-        updated_exploration_size = self.min_crop_size(self.step_exploration) + 2
-        updated_obstacle_size = self.new_occ_size + 2
-        bandwidth = self.state_size + updated_exploration_size + updated_obstacle_size
+        updated_exploration_size = self.min_crop_size(self.step_exploration) + 2 + 2 + 2
+        updated_obstacle_size = self.new_occ_size + 2 + 2 + 2
+        bandwidth = self.state_size * 2 + updated_exploration_size * 1 + updated_obstacle_size * 1
+
+        # Bandwidth. but updated each ministep
+        bandwidth_fast = self.state_size * 2 + occupancy_band_incr + vfm_band_incr
 
         # OPT-SAM 0: rules of icra 2021 work
         if self.use_opt_rule == 0:
@@ -632,7 +644,8 @@ class Environment:
             'repetive_exploration_rate': repetitive_exploration_rate,
             'ratio_explored': ratio_explored,
             'euclidean_state': state_info['euclidean_state'],
-            'bandwidth': bandwidth
+            'bandwidth': bandwidth,
+            'bandwidth_fast': bandwidth_fast
         }
 
         # plt.imshow(state_info['euclidean_state'][2])

@@ -2,9 +2,9 @@ python evaluate.py --config-path test_logs/opt-sam-opt/config.yml
 python evaluate.py --config-path test_logs/opt-sam-opt-2agent/config.yml
 python evaluate.py --config-path test_logs/opt-sam-opt-4agent/config.yml
 
+python evaluate.py --config-path test_logs/opt-sam-opt-random/config.yml
+
 python evaluate.py --config-path test_logs/opt-sam-opt-frontier/config.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-frontier-2agent/config.yml
-python evaluate.py --config-path test_logs/opt-sam-opt-frontier-4agent/config.yml
 
 python evaluate.py --config-path test_logs/opt-sam-opt-ivfm/config.yml
 python evaluate.py --config-path test_logs/opt-sam-opt-ivfm-2agent/config.yml

@@ -5,7 +5,7 @@ checkpoint_path: checkpoints/20210202T070652911253-large_columns/checkpoint_0003
 checkpoints_dir: checkpoints
 collision_penalty: 10
 discount_factor: 0.99
-experiment_name: frontiers
+experiment_name: large_columns
 exploration_reward: 1
 exploration_timesteps: 3000
 final_exploration: 0.1
@@ -29,7 +29,7 @@ random_seed: null
 replay_buffer_size: 6000
 room_length: 3.0
 room_width: 3.0
-run_name: frontier-2agent
+run_name: random
 shortest_path_channel_scale: 0.25
 steering_commands_num_turns: 4
 target_update_freq: 1000
@@ -44,5 +44,4 @@ use_steering_commands: false
 use_visit_frequency_channel: true
 weight_decay: 0.0001
 
-frontier_exploration: True
-num_agents: 2
+random: True
