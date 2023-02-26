@@ -58,12 +58,13 @@ class result():
             self.bandwidth_fast_list.append(this_bandwidth_fast)
 
             # BANDWIDTH
+
             self.bandwidth_list.append(this_bandwidth)
 
             # calculate fail rate
             # if this_episode[-1]['end_episode_condition'] == 'timed_out':
             #    self.fail += 1
-            
+
             self.np_rer_list = np.asarray(self.rer_list)
             # self.np_ce_list = np.asarray(self.ce_list)
             self.np_pe_list = np.asarray(self.pe_list)

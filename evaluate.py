@@ -155,7 +155,7 @@ def main(args):
         eval_dir.mkdir(parents=True, exist_ok=True)
 
     eval_path = eval_dir / '{} {}.npy'.format(cfg.run_name, time.time())
-    data = _run_eval(cfg, num_episodes=200)
+    data = _run_eval(cfg, num_episodes=24)
     print('saved eval to', eval_path)
     np.save(eval_path, data)
     print(eval_path)

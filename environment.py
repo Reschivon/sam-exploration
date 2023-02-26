@@ -201,6 +201,7 @@ class Environment:
         self.step_exploration = None
         self.configuration_space = None
         self.configuration_space_thin = None
+        self.OOBspace = None
         self.closest_cspace_indices = None
         self.occupancy_map = None
 
@@ -819,6 +820,8 @@ class Environment:
             obstacles.extend(add_random_columns(obstacles, 125))
         elif self.obstacle_config == 'large4_columns':
             obstacles.extend(add_random_columns(obstacles, 100))
+        elif self.obstacle_config == 'large3_columns':
+            obstacles.extend(add_random_columns(obstacles, 75))
         elif self.obstacle_config == 'large_divider_columns':
             obstacles.extend(add_random_horiz_divider())
             obstacles.extend(add_random_columns(obstacles, 20))
@@ -1150,9 +1153,11 @@ class Environment:
 
         # Update configuration space
         selem = disk(np.floor(ROBOT_RADIUS * LOCAL_MAP_PIXELS_PER_METER))
+        selem2 = disk(np.floor(ROBOT_RADIUS * LOCAL_MAP_PIXELS_PER_METER // 2))
         self.configuration_space = 1 - np.maximum(self.wall_map, binary_dilation(self.occupancy_map, selem).astype(np.uint8))
         selem_thin = disk(np.floor(ROBOT_HALF_WIDTH * LOCAL_MAP_PIXELS_PER_METER))
         self.configuration_space_thin = 1 - binary_dilation(np.minimum(1 - self.wall_map, self.occupancy_map), selem_thin).astype(np.uint8)
+        self.OOBspace = binary_dilation(self.occupancy_map, selem2).astype(np.uint8)
         self.closest_cspace_indices = distance_transform_edt(1 - self.configuration_space, return_distances=False, return_indices=True)
 
         return cube_found
@@ -1370,6 +1375,14 @@ class Environment:
             global_boundary_gradient_map = self._create_global_boundary_gradient_map()
             channels.append(self._get_local_boundary_gradient_map(global_boundary_gradient_map, self.robot_position[robot_index], self.robot_heading[robot_index]))
         
+        elif self.state_type == 'convnext':
+            # Robot state
+            untraversible_space = self._get_local_map(self.OOBspace, self.robot_position[robot_index], self.robot_heading[robot_index])
+            channels.append(np.clip(self.robot_state_channel + untraversible_space, 0, 1))
+            
+            # Visit frequency map
+            channels.append(self._get_local_visit_frequency_map(self.global_visit_freq_map, self.robot_position[robot_index], self.robot_heading[robot_index]))
+            
         else:
             raise RuntimeError(f"'{self.state_type}' is not a valid state type")
 
