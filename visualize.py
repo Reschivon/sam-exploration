@@ -21,6 +21,7 @@ class result():
             
             # print('end condition', bf[-1]['end_episode_condition'])
             if this_episode[-1]['end_episode_condition'] == 'timed_out':
+                self.fail += 1
                 continue
 
             for j in range(int(agents)):
@@ -57,11 +58,7 @@ class result():
             self.bandwidth_fast_list.append(this_bandwidth_fast)
 
             # BANDWIDTH
-            self.bandwidth_list.append(this_bandwidth)
-
-            # calculate fail rate
-            if this_episode[-1]['end_episode_condition'] == 'timed_out':
-                self.fail += 1
+            self.bandwidth_list.append(this_bandwidth)                
             
             self.np_rer_list = np.asarray(self.rer_list)
             self.np_ce_list = np.asarray(self.ce_list)
@@ -78,7 +75,7 @@ class result():
 
         print('RER | PE | Steps | Overlap | Bandwidth | Coverage | Not Found')
 
-        print(f'{np.nanmean(self.np_rer_list):.3f} {pm} {np.std(self.np_rer_list):.3f}', end=' & ')
+        print(f'{np.nanmean(self.np_rer_list):.3f} {pm} {np.nanstd(self.np_rer_list):.3f}', end=' & ')
 
         print(f'{np.nanmean(self.np_pe_list):.0f} {pm} {np.std(self.np_pe_list):.0f}', end=' & ')
 

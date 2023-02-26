@@ -67,3 +67,49 @@ class DeepLabPolicy(DQNPolicy):
        return models.deeplabv3_resnet18(num_input_channels=self.cfg.num_input_channels).to(self.device)
 
         # return models.DenseActionSpaceDQN(num_input_channels=self.cfg.num_input_channels).to(self.device)
+
+
+from ConvNeXt.semantic_segmentation.backbone.convnext import ConvNeXt
+from mmseg.models.decode_heads.uper_head import UPerHead
+class Stupid(torch.nn.Module):
+    def __init__(self, num_input_channels=3, num_output_channels=1):
+        super().__init__()
+        self.backbone = ConvNeXt(
+                in_chans=3,
+                depths=[3, 3, 9, 3], 
+                dims=[96, 192, 384, 768], 
+                drop_path_rate=0.4,
+                layer_scale_init_value=1.0,
+                out_indices=[0, 1, 2, 3],
+            )
+        self.decode_head=UPerHead(
+                in_channels=[96, 192, 384, 768],
+                num_classes=1,
+                in_index=[0, 1, 2, 3],
+                pool_scales=(1, 2, 3, 6),
+                channels=512,
+                dropout_ratio=0.1,
+                norm_cfg=None, # dict(type='BN', requires_grad=True),
+                align_corners=False,
+                act_cfg=dict(type='ReLU', inplace=False)
+            )
+        
+        self.up = torch.nn.Upsample(scale_factor=4, mode='nearest')
+
+    def forward(self, x):
+        x = self.backbone(x)
+        x = self.decode_head(x)
+        # x = x[:, 0, :, :] / x[:, 1, :, :]
+
+        # add dim so upscaling works
+        # x = x[:, None, :, :]
+        x = self.up(x)
+        x = x.squeeze(1)
+        # plt.imshow(x.cpu().detach().squeeze())
+        # plt.show()
+        return x
+
+class ConvNextPolicy(DQNPolicy):
+    def build_network(self):
+        return Stupid() \
+        .to(self.device)
