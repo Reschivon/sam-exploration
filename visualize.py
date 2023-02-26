@@ -9,26 +9,22 @@ _eps = 200
 
 class result():
     def __init__(self, path, agents):
+        self.agents = agents
         self.file = np.load(path, allow_pickle=True).squeeze()
-        self.eps = _eps
-        self.pass_eps = _eps
-        this_rer, this_ce, this_pe = 0, 0, 0
-        self.rer, self.ce, self.pe, self.fail = 0, 0, 0, 0
+        self.fail = 0
         self.rer_list, self.ce_list, self.pe_list, self.cmd_list, self.bandwidth_list, self.coverage_list, self.overlap_list, self.bandwidth_fast_list =\
               [], [], [], [], [], [], [], []
 
-        for i in range(_eps):
-            bf = self.file[i]
-            
-            cmd_count = len(bf) // int(agents)
+        for this_episode in self.file:            
+            cmd_count = len(this_episode) // int(agents)
             # print(cmd_count)
             
             # print('end condition', bf[-1]['end_episode_condition'])
-            if bf[-1]['end_episode_condition'] == 'timed_out':
+            if this_episode[-1]['end_episode_condition'] == 'timed_out':
                 continue
 
             for j in range(int(agents)):
-                data = bf[-(j + 1)]
+                data = this_episode[-(j + 1)]
                 # calculate rer and ce
                 this_rer = data['repetitive_exploration_rate'] - 1
                 this_ce = float(data['explored_area']) / cmd_count
@@ -42,7 +38,6 @@ class result():
                 # PE
                 if data['cumulative_distance'] >= 1:
                     this_pe = float(data['explored_area']) / data['cumulative_distance']
-                    self.pe += this_pe
                     self.pe_list.append(this_pe)
                 else:
                     self.pe_list.append(0.0)
@@ -55,8 +50,8 @@ class result():
                 # overlap
                 self.overlap_list.append(this_overlap)
 
-            this_bandwidth = sum(step_info['bandwidth'] for step_info in bf) 
-            this_bandwidth_fast = sum(step_info['bandwidth_fast'] for step_info in bf) 
+            this_bandwidth = sum(step_info['bandwidth'] for step_info in this_episode) 
+            this_bandwidth_fast = sum(step_info['bandwidth_fast'] for step_info in this_episode) 
 
             # Bandwidth Fast
             self.bandwidth_fast_list.append(this_bandwidth_fast)
@@ -65,7 +60,7 @@ class result():
             self.bandwidth_list.append(this_bandwidth)
 
             # calculate fail rate
-            if bf[-1]['end_episode_condition'] == 'timed_out':
+            if this_episode[-1]['end_episode_condition'] == 'timed_out':
                 self.fail += 1
             
             self.np_rer_list = np.asarray(self.rer_list)
@@ -78,35 +73,30 @@ class result():
             self.np_bandwidth_fast_list = np.asarray(self.bandwidth_fast_list)
     
     def print_stats(self):
-        def print_array(arr):
-            print(f'\t {np.nanmean(arr):.4f} \t std: {np.std(arr):.4f}')
 
-        print('RER:')
-        print_array(self.np_rer_list)
+        print('RER | PE | Steps | Overlap | Bandwidth | Coverage | Not Found')
 
-        print('CE:')
-        print_array(self.np_ce_list)
+        print(self.np_rer_list)
 
-        print('PE:')
-        print_array(self.np_pe_list)
+        print(f'{np.nanmean(self.np_rer_list):.3f} ± {np.std(self.np_rer_list):.3f}', end=' & ')
 
-        print('Commands (per agent):')
-        # plt.plot(range(len(self.np_cmd_list)), self.np_cmd_list)
-        print_array(self.np_cmd_list)
+        print(f'{np.nanmean(self.np_pe_list):.0f} ± {np.std(self.np_pe_list):.0f}', end=' & ')
 
-        print('Overlap Ratio:')
-        print_array(self.np_overlap_list)
+        print(f'{np.nanmean(self.np_cmd_list):.1f} ± {np.std(self.np_cmd_list):.1f}', end=' & ')
 
-        print('Bandwidth:')
-        print_array(self.np_bandwidth_list)
+        if int(self.agents) == 1:
+            print('N/A & ', end='')
+        else:
+            print(f'{np.nanmean(self.np_overlap_list):.1f} ± {np.std(self.np_overlap_list):.1f}', end=' & ')
 
-        print('Coverage:') 
-        print_array(self.np_coverage_list)
+        self.np_bandwidth_list_mib = np.array([b / 1024 / 1024 for b in self.np_bandwidth_fast_list])
+        print(f'{np.nanmean(self.np_bandwidth_list_mib):.1f} ± {np.std(self.np_bandwidth_list_mib):.1f}', end=' & ')
 
-        print('not_found:\n\t', self.fail)
+        print(f'{np.nanmean(self.np_coverage_list):.3f} ± {np.std(self.np_coverage_list):.3f}', end=' & ')
 
-        print('Bandwidth Fast:')
-        print_array(self.np_bandwidth_fast_list)
+        print(self.fail, end='')
+
+        print(' \\')
 
 #####################################################################
 # Create results
