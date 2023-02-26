@@ -13,11 +13,12 @@ import environment
 import munkres
 import math
 import random
+from matplotlib import pyplot as plt
 
 def _run_eval(cfg, num_episodes=40):
 
     # Customize env arguments
-    cfg['use_gui'] = False
+    cfg['use_gui'] = True
     cfg['show_state_representation'] = True
     cfg['show_occupancy_map'] = False
 
@@ -72,6 +73,7 @@ def _run_eval(cfg, num_episodes=40):
                 # print(robot_index, target)
                 curr_state, _, curr_done, info = env.step(target, robot_index, the_action_is_relative_pixels=True)
             else:
+                plt.figure(robot_index + 10)
                 action, _ = policy.step(states[robot_index])
                 curr_state, _, curr_done, info = env.step(action, robot_index)
                 infos.append(info)

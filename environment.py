@@ -79,7 +79,7 @@ class Environment:
             step_limit = 800, hyperbolic_zoom=2,
             num_agents=1,
             ministep_size=0.25, inactivity_cutoff=100, random_seed=None,
-            use_gui=False, show_debug_annotations=False, show_occupancy_map=False, show_state_representation=False, use_opt_rule=0,
+            use_gui=True, show_debug_annotations=False, show_occupancy_map=False, show_state_representation=False, use_opt_rule=0,
         ):
         ################################################################################
         # Store arguments
@@ -220,8 +220,9 @@ class Environment:
 
         ################################################################################
         # pybullet
-
+        print('CONNECTING GUI')
         if self.use_gui:
+            print('CONNECTING GUI')
             p.connect(p.GUI)
             p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
         else:
@@ -950,8 +951,6 @@ class Environment:
             if self.state_type == 'hyperbolic':
                 num_channels = 4
 
-            plot_start_index = robot_index * COLS
-
             # if type(self.debug_images[robot_index]) != type(None):
             #     ax5 = self.sr_plt.subplot(self.num_agents, COLS, plot_start_index + 5)
             #     colors = self.sr_plt.imshow(self.debug_images[robot_index])
@@ -961,24 +960,24 @@ class Environment:
             if not self.show_state_representation:
                 return
 
-            ax1 = self.sr_subplots[0]
+            ax1 = self.sr_subplots[robot_index][0]
             colors = ax1.imshow(state[:,:,0])
             # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
             # ax1.axis('off')
 
             if num_channels > 1:
-                ax2 = self.sr_subplots[1]
+                ax2 = self.sr_subplots[robot_index][1]
                 colors = ax2.imshow(state[:,:,1])
                 # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
                 # ax2.axis('off')
 
                 if num_channels > 2:
-                    ax3 = self.sr_subplots[2]
+                    ax3 = self.sr_subplots[robot_index][2]
                     colors = ax3.imshow(state[:,:,2])
                     # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
                     # ax3.axis('off')
 
-                    ax4 = self.sr_subplots[3]
+                    ax4 = self.sr_subplots[robot_index][3]
                     colors = ax4.imshow(state[:,:,3])
                     # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
                     # ax4.axis('off')
