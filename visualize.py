@@ -20,21 +20,22 @@ class result():
             # print(cmd_count)
             
             # print('end condition', bf[-1]['end_episode_condition'])
-            if this_episode[-1]['end_episode_condition'] == 'timed_out':
+            if cmd_count == 0 or this_episode[-1]['end_episode_condition'] == 'timed_out':
+                self.fail += 1
                 continue
 
             for j in range(int(agents)):
                 data = this_episode[-(j + 1)]
                 # calculate rer and ce
                 this_rer = data['repetitive_exploration_rate'] - 1
-                this_ce = float(data['explored_area']) / cmd_count
+                # this_ce = float(data['explored_area']) / cmd_count
                 this_coverage = data['ratio_explored']
                 this_overlap = data['overlapped_ratio']
 
                 # RER
                 self.rer_list.append(this_rer)
                 # CE
-                self.ce_list.append(this_ce)
+                # self.ce_list.append(this_ce)
                 # PE
                 if data['cumulative_distance'] >= 1:
                     this_pe = float(data['explored_area']) / data['cumulative_distance']
@@ -60,11 +61,11 @@ class result():
             self.bandwidth_list.append(this_bandwidth)
 
             # calculate fail rate
-            if this_episode[-1]['end_episode_condition'] == 'timed_out':
-                self.fail += 1
+            # if this_episode[-1]['end_episode_condition'] == 'timed_out':
+            #    self.fail += 1
             
             self.np_rer_list = np.asarray(self.rer_list)
-            self.np_ce_list = np.asarray(self.ce_list)
+            # self.np_ce_list = np.asarray(self.ce_list)
             self.np_pe_list = np.asarray(self.pe_list)
             self.np_cmd_list = np.asarray(self.cmd_list)
             self.np_bandwidth_list = np.asarray(self.bandwidth_list)
@@ -76,9 +77,9 @@ class result():
 
         pm = '$\\pm$'
 
-        print('RER | PE | Steps | Overlap | Bandwidth | Coverage | Not Found')
+        # print('RER | PE | Steps | Overlap | Bandwidth | Coverage | Not Found')
 
-        print(f'{np.nanmean(self.np_rer_list):.3f} {pm} {np.std(self.np_rer_list):.3f}', end=' & ')
+        print(f'{np.nanmean(self.np_rer_list):.3f} {pm} {np.nanstd(self.np_rer_list):.3f}', end=' & ')
 
         print(f'{np.nanmean(self.np_pe_list):.0f} {pm} {np.std(self.np_pe_list):.0f}', end=' & ')
 
@@ -96,7 +97,7 @@ class result():
 
         print(self.fail, end='')
 
-        print(' \\\\', end='', flush=True)
+        print(' \\\\', end='\n', flush=True)
 
 #####################################################################
 # Create results
