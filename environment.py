@@ -2,7 +2,7 @@ from locale import normalize
 import pprint
 import tempfile
 from pathlib import Path
-
+import seaborn as sns
 import numpy as np
 import pybullet as p
 from scipy.ndimage import rotate as rotate_image
@@ -16,6 +16,16 @@ from skimage.morphology.selem import disk
 import matplotlib.pyplot as plt  # pylint: disable=import-outside-toplevel
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import spfa
+from pynput import keyboard
+cmap = sns.color_palette("magma", as_cmap=True)
+
+bnm = False
+
+import sys
+import threading
+import time
+import queue
+
 
 # Room, walls, and objects
 GLOBAL_SCALING = 0.1
@@ -208,6 +218,7 @@ class Environment:
             COLS = 4
             plt.ion()
             self.sr_plt, self.sr_subplots = plt.subplots(self.num_agents, COLS, figsize=(20, 4))
+            self.sr_plt_ivfm, self.sr_subplots_ivfm = plt.subplots(self.num_agents, 2, figsize=(20, 4))
 
         if self.show_occupancy_map:
             self.plt = plt.figure(0, figsize=(9, 9 * self.room_width / self.room_length))
@@ -245,6 +256,7 @@ class Environment:
     def reset(self, robot_index):
         ################################################################################
         # Room and objects
+        self.steps = 0
 
         # Reset pybullet
         p.resetSimulation()
@@ -295,6 +307,8 @@ class Environment:
     def _step(self, action, robot_index, dry_run=False, the_action_is_relative_pixels=False):
         ################################################################################
         # Setup
+
+        self.steps += 1
 
         # Store new action
         if self.use_steering_commands:
@@ -494,7 +508,7 @@ class Environment:
             if sim_steps % MAP_UPDATE_STEPS == 0:
                 cube_found = self._update_state(robot_index)
 
-                if len(plt.get_fignums()) > 0:                        
+                if len(plt.get_fignums()) > 0 and self.steps > 30:                        
                     if self.show_occupancy_map:
                         self.plt.clf()
                         self._update_occupancy_map_visualization(robot_waypoint_positions, robot_target_end_effector_position)
@@ -514,7 +528,9 @@ class Environment:
 
         self._update_vfm_state(robot_index)
 
-        self._visualize_state_representation()
+        if self.steps > 30:
+            self._visualize_state_representation()
+        print(self.steps)
 
         self.robot_position[robot_index], self.robot_heading[robot_index] = self._get_robot_pose(robot_index)
         if cube_found == False:
@@ -568,12 +584,12 @@ class Environment:
         i = 0
         for visits in self.multi_visit_map:
             i += 1
-            plt.figure(i + 2)
-            plt.imshow(visits)
+            # plt.figure(i + 2)
+            # plt.imshow(visits)
             multi_visit_sum += visits
 
         plt.figure(0)
-        plt.imshow(multi_visit_sum)
+        plt.imshow(multi_visit_sum, cmap=cmap)
 
         overlapped = multi_visit_sum > 1
         non_overlapped = multi_visit_sum == 1
@@ -940,7 +956,16 @@ class Environment:
         COLS = 4
 
         for robot_index in range(self.num_agents):
+
+            ss = self.state_type
+
             state, state_info = self.get_state(robot_index)
+
+            self.state_type = 'ivfm'
+
+            state_ivfm, state_info = self.get_state(robot_index)
+
+            self.state_type = ss
 
             if self.state_type == 'vfm':
                 num_channels = 4
@@ -961,25 +986,59 @@ class Environment:
                 return
 
             ax1 = self.sr_subplots[robot_index][0]
-            colors = ax1.imshow(state[:,:,0])
+            colors = ax1.imshow(state[:,:,0], cmap=cmap, vmin=0., vmax=5.)
             # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
             # ax1.axis('off')
 
             if num_channels > 1:
                 ax2 = self.sr_subplots[robot_index][1]
-                colors = ax2.imshow(state[:,:,1])
-                # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
+                colors = ax2.imshow(state[:,:,1], cmap=cmap, vmin=0., vmax=5.)
+                # plt.colorbar(colors, fraction=0.046, pad=0.04)
                 # ax2.axis('off')
 
                 if num_channels > 2:
                     ax3 = self.sr_subplots[robot_index][2]
-                    colors = ax3.imshow(state[:,:,2])
-                    # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
+                    colors = ax3.imshow(state[:,:,2], cmap=cmap, vmin=0., vmax=5.)
+                    # plt.colorbar(colors, fraction=0.046, pad=0.04)
                     # ax3.axis('off')
 
                     ax4 = self.sr_subplots[robot_index][3]
-                    colors = ax4.imshow(state[:,:,3])
-                    # self.sr_plt.colorbar(colors, fraction=0.046, pad=0.04)
+                    colors = ax4.imshow(state[:,:,3], cmap=cmap, vmin=0., vmax=0.3)
+                    # plt.colorbar(colors, fraction=0.046, pad=0.04)
+                    # ax4.axis('off')
+
+
+            num_channels = 2
+
+            # if type(self.debug_images[robot_index]) != type(None):
+            #     ax5 = self.sr_plt.subplot(self.num_agents, COLS, plot_start_index + 5)
+            #     colors = self.sr_plt.imshow(self.debug_images[robot_index])
+            #     self.sr_plt.gcf().colorbar(colors, ax=ax5)
+            #     ax5.axis('off')
+
+            if not self.show_state_representation:
+                return
+
+            ax1 = self.sr_subplots_ivfm[robot_index][0]
+            colors = ax1.imshow(state_ivfm[:,:,0], cmap=cmap, vmin=0., vmax=12.)
+            # plt.colorbar(colors, fraction=0.046, pad=0.04)
+            # ax1.axis('off')
+
+            if num_channels > 1:
+                ax2 = self.sr_subplots_ivfm[robot_index][1]
+                colors = ax2.imshow(state_ivfm[:,:,1], cmap=cmap, vmin=0., vmax=0.3)
+                # plt.colorbar(colors, fraction=0.046, pad=0.04)
+                # ax2.axis('off')
+
+                if num_channels > 2:
+                    ax3 = self.sr_subplots_ivfm[robot_index][2]
+                    colors = ax3.imshow(state_ivfm[:,:,2], cmap=cmap, vmin=0., vmax=5.)
+                    # plt.colorbar(colors, fraction=0.046, pad=0.04)
+                    # ax3.axis('off')
+
+                    ax4 = self.sr_subplots_ivfm[robot_index][3]
+                    colors = ax4.imshow(state_ivfm[:,:,3], cmap=cmap, vmin=0., vmax=200.)
+                    # plt.colorbar(colors, fraction=0.046, pad=0.04)
                     # ax4.axis('off')
 
     def _update_occupancy_map_visualization(self, robot_waypoint_positions=None, robot_target_end_effector_position=None):
@@ -1288,7 +1347,7 @@ class Environment:
         # Merged channels
         if self.state_type == 'ivfm':
             # Untraversible space 
-            untraversible_space = 1 - self._get_local_map(self.configuration_space, self.robot_position[robot_index], self.robot_heading[robot_index])
+            untraversible_space = self._get_local_map(self.wall_map, self.robot_position[robot_index], self.robot_heading[robot_index])
 
             # Robot collision mask
             robot_state = self.robot_state_channel
