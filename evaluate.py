@@ -17,7 +17,7 @@ import random
 def _run_eval(cfg, num_episodes=40):
 
     # Customize env arguments
-    cfg['use_gui'] = False
+    cfg['use_gui'] = True
     cfg['show_state_representation'] = False
     cfg['show_occupancy_map'] = False
 
