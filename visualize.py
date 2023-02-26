@@ -74,29 +74,29 @@ class result():
     
     def print_stats(self):
 
+        pm = '$\\pm$'
+
         print('RER | PE | Steps | Overlap | Bandwidth | Coverage | Not Found')
 
-        print(self.np_rer_list)
+        print(f'{np.nanmean(self.np_rer_list):.3f} {pm} {np.std(self.np_rer_list):.3f}', end=' & ')
 
-        print(f'{np.nanmean(self.np_rer_list):.3f} ± {np.std(self.np_rer_list):.3f}', end=' & ')
+        print(f'{np.nanmean(self.np_pe_list):.0f} {pm} {np.std(self.np_pe_list):.0f}', end=' & ')
 
-        print(f'{np.nanmean(self.np_pe_list):.0f} ± {np.std(self.np_pe_list):.0f}', end=' & ')
-
-        print(f'{np.nanmean(self.np_cmd_list):.1f} ± {np.std(self.np_cmd_list):.1f}', end=' & ')
+        print(f'{np.nanmean(self.np_cmd_list):.1f} {pm} {np.std(self.np_cmd_list):.1f}', end=' & ')
 
         if int(self.agents) == 1:
             print('N/A & ', end='')
         else:
-            print(f'{np.nanmean(self.np_overlap_list):.1f} ± {np.std(self.np_overlap_list):.1f}', end=' & ')
+            print(f'{np.nanmean(self.np_overlap_list):.1f} {pm} {np.std(self.np_overlap_list):.1f}', end=' & ')
 
         self.np_bandwidth_list_mib = np.array([b / 1024 / 1024 for b in self.np_bandwidth_fast_list])
-        print(f'{np.nanmean(self.np_bandwidth_list_mib):.1f} ± {np.std(self.np_bandwidth_list_mib):.1f}', end=' & ')
+        print(f'{np.nanmean(self.np_bandwidth_list_mib):.1f} {pm} {np.std(self.np_bandwidth_list_mib):.1f}', end=' & ')
 
-        print(f'{np.nanmean(self.np_coverage_list):.3f} ± {np.std(self.np_coverage_list):.3f}', end=' & ')
+        print(f'{np.nanmean(self.np_coverage_list):.3f} {pm} {np.std(self.np_coverage_list):.3f}', end=' & ')
 
         print(self.fail, end='')
 
-        print(' \\')
+        print(' \\\\', end='', flush=True)
 
 #####################################################################
 # Create results
@@ -105,7 +105,7 @@ def visualize(eval_path, num_agents):
     res.print_stats()
 
 if __name__ == '__main__':
-    visualize(sys.argv[1], sys.argv[2])
+    visualize(sys.argv[2], sys.argv[1])
 
 #####################################################################
 # Make the plot
