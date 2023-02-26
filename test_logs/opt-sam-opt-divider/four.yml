@@ -20,7 +20,7 @@ ministep_size: 0.25
 model_path: checkpoints/20210202T070652911253-large_columns/model_00036000.pth.tar
 nonmovement_penalty: 10
 num_cubes: 1
-num_input_channels: 2
+num_input_channels: 4
 obstacle_config: large_columns
 partial_rewards_scale: 2.0
 policy_type: dense_action_space
