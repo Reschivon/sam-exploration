@@ -144,9 +144,22 @@ def main(cfg):
     # Policy
     policy = utils.get_policy_from_cfg(cfg, env.get_action_space(), train=True)
 
+    warmup_steps = 4500
+    start_steps = cfg.learning_starts
+    def warmup(current_step: int):
+        current_step -= start_steps
+        if current_step < 0:
+            current_step = 0
+
+        if current_step < warmup_steps:  # current_step / warmup_steps * base_lr
+            return float(current_step / warmup_steps)
+        else:                                 # (num_training_steps - current_step) / (num_training_steps - warmup_steps) * base_lr
+            return max(0.0, float(cfg.total_timesteps - current_step) / float(max(1, cfg.total_timesteps - warmup_steps)))
+
     # Optimizer
     optimizer = optim.AdamW(policy.policy_net.parameters(), lr=cfg.learning_rate, betas=(0.9, 0.999), eps=1e-8, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, 400, 1.5)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, 400, 1.5)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup)
 
     # Replay buffer
     replay_buffer = ReplayBuffer(cfg.replay_buffer_size)
