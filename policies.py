@@ -40,7 +40,6 @@ class DQNPolicy:
         with torch.no_grad():
             output = self.policy_net(state).squeeze(0)
             plt.imshow(output.detach().cpu().squeeze())
-            print(output.min(), output.max())
         if random.random() < exploration_eps:
             action = random.randrange(self.action_space)
         else:
@@ -79,18 +78,20 @@ class Stupid(torch.nn.Module):
         super().__init__()
         self.backbone = ConvNeXt(
                 in_chans=3,
-                depths=[3, 3, 9, 3], 
+                depths=[3, 3, 5, 3], 
                 dims=[96, 192, 384, 768], 
                 drop_path_rate=0.4,
                 layer_scale_init_value=1.0,
                 out_indices=[0, 1, 2, 3],
             )
         self.decode_head=UPerHead(
-                in_channels=[96, 192, 384, 768],
+                # in_channels=[96, 192, 384, 768],
+                in_channels=[64, 128, 256, 512],
                 num_classes=1,
                 in_index=[0, 1, 2, 3],
                 pool_scales=(1, 2, 3, 6),
-                channels=512,
+                # channels=512,
+                channels=256,
                 dropout_ratio=0.1,
                 norm_cfg=None, # dict(type='BN', requires_grad=True),
                 align_corners=False,
