@@ -84,7 +84,7 @@ class result():
 
         print(f'{np.nanmean(self.np_pe_list):.0f} {pm} {np.std(self.np_pe_list):.0f}', end=' & ')
 
-        print(f'{np.nanmean(self.np_cmd_list):.1f} {pm} {np.std(self.np_cmd_list):.1f}', end=' & ')
+        print(f'{np.nanmean(self.np_cmd_list * int(self.agents)):.1f} {pm} {np.std(self.np_cmd_list * int(self.agents)):.1f}', end=' & ')
 
         if int(self.agents) == 1:
             print('N/A & ', end='')
