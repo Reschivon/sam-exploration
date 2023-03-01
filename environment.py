@@ -1307,7 +1307,7 @@ class Environment:
         # Merged channels
         if self.state_type == 'ivfm':
             # Untraversible space 
-            untraversible_space = 1 - self._get_local_map(self.configuration_space, self.robot_position[robot_index], self.robot_heading[robot_index])
+            untraversible_space = self._get_local_map(self.wall_map, self.robot_position[robot_index], self.robot_heading[robot_index])
 
             # Robot collision mask
             robot_state = self.robot_state_channel
