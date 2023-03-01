@@ -787,21 +787,35 @@ class Environment:
             return new_obstacles
 
         def add_random_horiz_divider():
-            divider_length = 0.8
-            divider_width = 0.05
-            buffer_width = (2 + np.sqrt(2)) * ROUNDED_CORNER_WIDTH
+            num_columns = 1
+            column_length = self.room_length * 0.6
+            column_width = 0.1
+            buffer_width = 0.08
+            polygons = [get_obstacle_box(obstacle) for obstacle in obstacles]
 
             for _ in range(10):
                 new_obstacles = []
-                for _ in range(100):
-                    x = self.room_length / 2 - divider_length / 2
-                    y = self.random_state.uniform(
-                        -self.room_width / 2 + buffer_width + divider_width / 2,
-                        self.room_width / 2 - buffer_width - divider_width / 2
-                    )
-                    obstacle = {'type': 'divider', 'position': [x, y], 'heading': 0, 'length': divider_length, 'width': divider_width}
-                    new_obstacles.append(obstacle)
-                if len(new_obstacles) == 1:
+                new_polygons = []
+                polygon_union = unary_union(polygons)
+                for _ in range(num_columns):
+                    for _ in range(100):
+                        random_column_length = column_length
+                        random_column_width = column_width
+                        heading = 0
+
+                        x = self.random_state.uniform(
+                            -self.room_length / 2 + 2 * buffer_width + random_column_length / 2,
+                            self.room_length / 2 - 2 * buffer_width - random_column_length / 2
+                        )
+                        y = 0
+                        obstacle = {'type': 'column', 'position': (x, y), 'heading': heading, 'length': random_column_length, 'width': random_column_width}
+                        b = get_obstacle_box(obstacle)
+                        if not polygon_union.intersects(b):
+                            new_obstacles.append(obstacle)
+                            new_polygons.append(b)
+                            polygon_union = unary_union(polygons + new_polygons)
+                            break
+                if len(new_obstacles) == num_columns:
                     break
             return new_obstacles
 
