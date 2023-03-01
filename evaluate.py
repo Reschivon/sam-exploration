@@ -17,7 +17,7 @@ import random
 def _run_eval(cfg, num_episodes=40):
 
     # Customize env arguments
-    cfg['use_gui'] = True
+    cfg['use_gui'] = False
     cfg['show_state_representation'] = False
     cfg['show_occupancy_map'] = False
 
@@ -155,7 +155,7 @@ def main(args):
         eval_dir.mkdir(parents=True, exist_ok=True)
 
     eval_path = eval_dir / '{} {}.npy'.format(cfg.run_name, time.time())
-    data = _run_eval(cfg, num_episodes=24)
+    data = _run_eval(cfg, num_episodes=10)
     print('saved eval to', eval_path)
     np.save(eval_path, data)
     print(eval_path)

@@ -39,7 +39,7 @@ class DQNPolicy:
         state = self.apply_transform(state).to(self.device)
         with torch.no_grad():
             output = self.policy_net(state).squeeze(0)
-            plt.imshow(output.detach().cpu().squeeze())
+            # plt.imshow(output.detach().cpu().squeeze())
         if random.random() < exploration_eps:
             action = random.randrange(self.action_space)
         else:
