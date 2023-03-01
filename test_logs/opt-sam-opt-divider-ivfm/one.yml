@@ -22,7 +22,7 @@ model_path: checkpoints/ivfm_checkpoints/model_00026000.pth.tar
 nonmovement_penalty: 15000
 num_cubes: 1
 num_input_channels: 2
-obstacle_config: large_columns
+obstacle_config: large_divider
 partial_rewards_scale: 2.0
 policy_type: dense_action_space
 position_channel_scale: 0.25
